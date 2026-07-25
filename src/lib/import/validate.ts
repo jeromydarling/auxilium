@@ -41,10 +41,12 @@ export function validateRow(row: NormalizedRow, now = new Date().toISOString()):
   }
 
   // ── Warnings: import it, but say something ────────────────────────────────
-  if (!row.first_name || !row.last_name) {
+  // Only when exactly one half is present — a row with neither is already an
+  // error above, and "only a last name was found" would be plainly untrue.
+  if (Boolean(row.first_name) !== Boolean(row.last_name)) {
     issues.push({
       code: 'name.partial',
-      field: !row.first_name ? 'first_name' : 'last_name',
+      field: row.first_name ? 'last_name' : 'first_name',
       message: `Only a ${row.first_name ? 'first' : 'last'} name was found.`,
       severity: 'warning',
     });

@@ -57,6 +57,19 @@ export interface MemberFacts {
   onboarding_complete: boolean;
   financial_stress: boolean;
   household: HouseholdFacts | null;
+  /**
+   * Whether this member is their household's primary contact.
+   *
+   * Household-structure facts — size, dependents, caregiving, recent changes —
+   * are properties of the *household*, not of each person in it. Scoring them
+   * on every member puts eight rows on the triage board for one family and
+   * ranks nothing. They are scored on the primary contact instead, because
+   * that is the person staff would actually call about the household.
+   *
+   * A household with no primary marked falls back to true for everyone, so a
+   * messy import never silently hides a complex family.
+   */
+  is_primary_contact: boolean;
   needs: NeedFacts[];
   prayer_requests: PrayerFacts[];
   /**

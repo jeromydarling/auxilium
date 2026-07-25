@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Auxilium's visual language.
+ *
+ * This is software someone opens on the worst day of a family's year. It
+ * should read like a hospital chart: dense, sober, legible at a glance, with
+ * colour reserved for meaning rather than decoration. Slate ground, one deep
+ * teal primary, and four fixed NRI direction hues that are never reused for
+ * anything else — if something is amber on this screen, it is Onus, always.
+ *
+ * Dark is the default. Staff work in this tool for hours.
+ */
+
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 215 28% 17%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+
+    /* Deep teal — trustworthy, clinical, not a startup blue. */
+    --primary: 187 62% 26%;
+    --primary-foreground: 180 40% 98%;
+
+    --secondary: 210 20% 94%;
+    --secondary-foreground: 215 25% 27%;
+
+    --muted: 210 20% 94%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 210 20% 92%;
+    --accent-foreground: 215 28% 17%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 187 62% 32%;
+
+    --radius: 0.5rem;
+
+    /* NRI compass. Fixed meanings, never decorative:
+       Cura   — a warm rose. Care, a person hurting.
+       Onus   — amber. Weight, money, urgency.
+       Familia— violet. Household complexity.
+       Fides  — slate blue. Trust and communication. */
+    --cura: 350 65% 48%;
+    --onus: 32 85% 44%;
+    --familia: 265 50% 52%;
+    --fides: 215 40% 45%;
+  }
+
+  .dark {
+    --background: 215 30% 9%;
+    --foreground: 210 20% 94%;
+
+    --card: 215 28% 12%;
+    --card-foreground: 210 20% 94%;
+
+    --popover: 215 28% 12%;
+    --popover-foreground: 210 20% 94%;
+
+    --primary: 187 55% 45%;
+    --primary-foreground: 215 30% 9%;
+
+    --secondary: 215 25% 17%;
+    --secondary-foreground: 210 20% 94%;
+
+    --muted: 215 25% 17%;
+    --muted-foreground: 215 15% 62%;
+
+    --accent: 215 25% 20%;
+    --accent-foreground: 210 20% 94%;
+
+    --destructive: 0 65% 52%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 215 22% 20%;
+    --input: 215 22% 22%;
+    --ring: 187 55% 45%;
+
+    /* Lifted for contrast against the dark ground. */
+    --cura: 350 70% 62%;
+    --onus: 35 90% 58%;
+    --familia: 265 60% 68%;
+    --fides: 213 45% 62%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* Tabular numerals everywhere a number is compared down a column. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /**
+   * Direction chips. One class per direction so the mapping between a colour
+   * and its meaning lives in exactly one place.
+   */
+  .chip-cura {
+    background-color: hsl(var(--cura) / 0.12);
+    color: hsl(var(--cura));
+    border-color: hsl(var(--cura) / 0.3);
+  }
+  .chip-onus {
+    background-color: hsl(var(--onus) / 0.12);
+    color: hsl(var(--onus));
+    border-color: hsl(var(--onus) / 0.3);
+  }
+  .chip-familia {
+    background-color: hsl(var(--familia) / 0.12);
+    color: hsl(var(--familia));
+    border-color: hsl(var(--familia) / 0.3);
+  }
+  .chip-fides {
+    background-color: hsl(var(--fides) / 0.12);
+    color: hsl(var(--fides));
+    border-color: hsl(var(--fides) / 0.3);
+  }
+}

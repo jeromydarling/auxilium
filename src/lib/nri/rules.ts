@@ -316,6 +316,15 @@ function isTerminal(status: string): boolean {
 // FAMILIA — household complexity
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Household-structure rules score on the primary contact only.
+ *
+ * Size, dependents, caregiving, and recent changes are facts about the
+ * household. Scoring them on every member produced eight identical rows for
+ * one family on the triage board — technically correct, operationally
+ * useless. The primary contact is the person staff would actually call about
+ * the household, so the household's complexity attaches to them.
+ */
 const FAMILIA_RULES: NriRule[] = [
   {
     code: 'familia.large_household',
@@ -327,6 +336,7 @@ const FAMILIA_RULES: NriRule[] = [
       'Five or more people in a sharing unit means more moving parts: more eligibility ' +
       'questions, more renewal paperwork, more ways to miss someone.',
     evaluate: (f) => {
+      if (!f.is_primary_contact) return NO;
       const count = f.household?.member_count ?? 0;
       if (count < 5) return NO;
       // 20 at five people, 30 at seven or more.
@@ -341,6 +351,7 @@ const FAMILIA_RULES: NriRule[] = [
     severity: 'notable',
     rationale: 'Dependents drive both cost variability and the volume of routine care questions.',
     evaluate: (f) => {
+      if (!f.is_primary_contact) return NO;
       const deps = f.household?.dependent_count ?? 0;
       if (deps < 3) return NO;
       return match(`${deps} dependents`, deps >= 5 ? 30 : 20);
@@ -356,6 +367,7 @@ const FAMILIA_RULES: NriRule[] = [
       'A caregiver in the household means someone is carrying a second full-time job. It ' +
       'changes what "we sent them the form" is worth.',
     evaluate: (f) => {
+      if (!f.is_primary_contact) return NO;
       const caregivers = f.household?.caregiver_count ?? 0;
       if (caregivers === 0) return NO;
       return match(`${caregivers} caregiver${caregivers > 1 ? 's' : ''} in the household`);
@@ -371,6 +383,7 @@ const FAMILIA_RULES: NriRule[] = [
       'People joining or leaving a household in the last 90 days — a birth, a marriage, an ' +
       'adult child aging off — is exactly when eligibility gets quietly wrong.',
     evaluate: (f) => {
+      if (!f.is_primary_contact) return NO;
       const changes = f.household?.recent_membership_changes ?? 0;
       if (changes === 0) return NO;
       return match(`${changes} household membership change${changes > 1 ? 's' : ''} in 90 days`);

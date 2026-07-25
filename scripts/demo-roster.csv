@@ -1,0 +1,11 @@
+Mbr #,First Name,LAST NAME,Primary Email Address,Home Phone,DOB,Household Name,Relation,Monthly Share,Status,Notes
+SV-2001,Miriam,Castellanos,miriam.castellanos@example.org,(417) 555-0501,1977-03-14,Castellanos Household,Head,"$465.00",Active,Prefers text over email
+SV-2002,Hector,Castellanos,hector.castellanos@example.org,417.555.0502,7/22/1975,Castellanos Household,Spouse,$0.00,active,
+SV-2003,Lucia,Castellanos,,4175550501,11/03/2011,Castellanos Household,Child,,A,"Plays soccer, allergic to penicillin"
+SV-2004,Mateo,Castellanos,,4175550501,2/9/2014,Castellanos Household,Child,,A,
+SV-2005,Ruth,Adeyemi,ruth.adeyemi@example.org,+1 417 555 0610,1990-08-30,Adeyemi Household,Self,"1,250.50",Active,
+SV-2006,Ruth,Adeyemi,ruth.adeyemi@example.org,(417) 555-0610,1990-08-30,Adeyemi Household,Self,1250.5,Active,duplicate of the row above
+SV-2007,,,orphan.row@example.org,,,,,,,this row has no name and cannot be imported
+SV-2008,Grace,Whitfield,grace.whitfield@example.org,(417) 555-0142,1981-06-14,Whitfield Household,Head,$445.00,Active,already a member — should update not duplicate
+SV-2009,Nathan,Boone,nathan.boone@example.org,,Jan 5 1968,Boone Household,Head,$310.00,Lapsed,no phone on file
+SV-2010,Priya,Raghunathan,priya.r@example.org,(417) 555-0733,25/12/1988,Raghunathan Household,Head,$398.00,Pending,day-first date format

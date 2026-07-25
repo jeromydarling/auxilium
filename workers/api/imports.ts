@@ -94,8 +94,8 @@ imports.post('/', requireWriteAccess, async (c) => {
     candidates: await loadCandidates(c.env, user.org_id, content, maxRows),
   });
 
-  await persistAnalysis(c.env, user.org_id, importId, analysis);
-
+  // The parent import row must exist before its rows and mapping — both carry a
+  // foreign key to imports(id).
   await batch(c.env.DB, [
     c.env.DB.prepare(
       `INSERT INTO imports (id, org_id, created_by, filename, r2_key, file_size, format, status,
@@ -113,6 +113,8 @@ imports.post('/', requireWriteAccess, async (c) => {
        VALUES (?, ?, ?, ?, 0, ?, ?)`,
     ).bind(newId('importMapping'), user.org_id, importId, JSON.stringify(analysis.mapping), now, now),
   ]);
+
+  await persistAnalysis(c.env, user.org_id, importId, analysis);
 
   await audit(c.env.DB, {
     orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'import.uploaded',

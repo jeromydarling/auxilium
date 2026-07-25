@@ -25,9 +25,9 @@ export async function gatherFacts(
   if (memberIds.length === 0) return [];
   const placeholders = memberIds.map(() => '?').join(',');
 
-  // Four queries total regardless of member count. The alternative — one query
-  // per member — blows the subrequest budget on any real recompute.
-  const [members, households, needs, prayers, outreach] = await Promise.all([
+  // A fixed number of queries regardless of member count. The alternative —
+  // one query per member — blows the subrequest budget on any real recompute.
+  const [members, households, needs, prayers, outreach, primaries] = await Promise.all([
     all<MemberRow>(
       db,
       `SELECT id, org_id, household_id, status, created_at, joined_at, last_contact_at,
@@ -82,15 +82,26 @@ export async function gatherFacts(
         GROUP BY n.member_id`,
       orgId, ...memberIds,
     ),
+    // Which members are their household's primary contact, and which
+    // households have no primary at all. Household-structure Familia rules
+    // score on the primary only — see the note in src/lib/nri/types.ts.
+    all<{ household_id: string; member_id: string }>(
+      db,
+      `SELECT household_id, member_id FROM household_members
+        WHERE org_id = ? AND relationship = 'primary'`,
+      orgId,
+    ),
   ]);
 
   const householdById = new Map(households.map((h) => [h.id, h]));
+  const primaryByHousehold = new Map(primaries.map((p) => [p.household_id, p.member_id]));
   const needsByMember = groupBy(needs, (n) => n.member_id);
   const prayersByMember = groupBy(prayers, (p) => p.member_id);
   const outreachByMember = new Map(outreach.map((o) => [o.member_id, o.attempts]));
 
   return members.map((m) => {
     const household = m.household_id ? householdById.get(m.household_id) : undefined;
+    const primaryId = m.household_id ? primaryByHousehold.get(m.household_id) : undefined;
     return {
       id: m.id,
       org_id: m.org_id,
@@ -111,6 +122,10 @@ export async function gatherFacts(
             recent_membership_changes: household.recent_membership_changes,
           }
         : null,
+      // No household, or a household with nobody marked primary (common after a
+      // messy import), falls back to true — better a duplicated signal than a
+      // complex family nobody sees.
+      is_primary_contact: !m.household_id || primaryId === undefined || primaryId === m.id,
       needs: (needsByMember.get(m.id) ?? []).map(toNeedFacts),
       prayer_requests: (prayersByMember.get(m.id) ?? []).map(toPrayerFacts),
       unanswered_outreach: outreachByMember.get(m.id) ?? 0,

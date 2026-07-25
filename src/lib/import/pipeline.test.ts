@@ -252,6 +252,12 @@ describe('validation rejects little and explains much', () => {
   it('treats a half-name as importable', () => {
     const issues = validateRow({ ...base, first_name: '' }, NOW);
     expect(issues.every((i) => i.severity === 'warning')).toBe(true);
+    expect(issues.find((i) => i.code === 'name.partial')?.message).toMatch(/only a last name/i);
+  });
+
+  it('does not claim a nameless row has half a name', () => {
+    const issues = validateRow({ ...base, first_name: '', last_name: '' }, NOW);
+    expect(issues.map((i) => i.code)).not.toContain('name.partial');
   });
 
   it('warns but does not block on a bad email', () => {

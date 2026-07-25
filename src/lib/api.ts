@@ -1,0 +1,463 @@
+/**
+ * The API client.
+ *
+ * Thin on purpose: one `request` that handles JSON, cookies, and errors, and
+ * a set of typed wrappers. There is no client-side cache layer here — React
+ * Query owns that, and two caches disagreeing is a bug generator.
+ */
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public requestId?: string | null,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    // Session cookie is HttpOnly; it must ride along on every call.
+    credentials: 'same-origin',
+    headers:
+      init.body && !(init.body instanceof FormData)
+        ? { 'Content-Type': 'application/json', ...init.headers }
+        : init.headers,
+    ...init,
+  });
+
+  // The error shape is the only part of a response this function reads, so it
+  // is the only part worth typing here; the success payload is the caller's `T`.
+  type ErrorPayload = { error?: string; request_id?: string | null };
+
+  const isJson = response.headers.get('content-type')?.includes('application/json');
+  const payload = isJson
+    ? ((await response.json().catch(() => null)) as ErrorPayload | null)
+    : null;
+
+  if (!response.ok) {
+    throw new ApiError(
+      payload?.error ?? `Request failed (${response.status}).`,
+      response.status,
+      payload?.request_id,
+    );
+  }
+
+  return payload as T;
+}
+
+const get = <T>(path: string) => request<T>(path);
+const post = <T>(path: string, body?: unknown) =>
+  request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
+const patch = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
+const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
+
+export const api = {
+  health: () => get<HealthResponse>('/health'),
+
+  auth: {
+    me: () => get<MeResponse>('/auth/me'),
+    login: (email: string, password: string) => post<MeResponse>('/auth/login', { email, password }),
+    demo: () => post<MeResponse>('/auth/demo'),
+    logout: () => post<{ ok: true }>('/auth/logout'),
+    bootstrap: (body: { org_name: string; name: string; email: string; password: string }) =>
+      post<MeResponse>('/auth/bootstrap', body),
+  },
+
+  members: {
+    list: (params: { q?: string; status?: string; cursor?: string } = {}) =>
+      get<{ items: MemberListItem[]; nextCursor: string | null }>(`/members${query(params)}`),
+    get: (id: string) => get<MemberDetail>(`/members/${id}`),
+    create: (body: Record<string, unknown>) => post<{ id: string }>('/members', body),
+    update: (id: string, body: Record<string, unknown>) => patch<{ ok: true }>(`/members/${id}`, body),
+    logContact: (id: string, body: { responded?: boolean; note?: string }) =>
+      post<{ ok: true }>(`/members/${id}/contact`, body),
+  },
+
+  households: {
+    list: (params: { q?: string } = {}) => get<{ items: HouseholdListItem[] }>(`/households${query(params)}`),
+    get: (id: string) => get<HouseholdDetail>(`/households/${id}`),
+    create: (body: Record<string, unknown>) => post<{ id: string }>('/households', body),
+    addMember: (id: string, body: Record<string, unknown>) =>
+      post<{ ok: true }>(`/households/${id}/members`, body),
+  },
+
+  needs: {
+    list: (params: { status?: string; assigned_to?: string } = {}) =>
+      get<{ items: NeedListItem[] }>(`/needs${query(params)}`),
+    get: (id: string) => get<{ need: NeedListItem; updates: NeedUpdateItem[] }>(`/needs/${id}`),
+    create: (body: Record<string, unknown>) => post<{ id: string }>('/needs', body),
+    update: (id: string, body: Record<string, unknown>) => patch<{ ok: true }>(`/needs/${id}`, body),
+    addUpdate: (id: string, body: { kind?: string; body?: string; meta?: Record<string, unknown> }) =>
+      post<{ id: string }>(`/needs/${id}/updates`, body),
+  },
+
+  prayer: {
+    list: (params: { status?: string; category?: string } = {}) =>
+      get<{ items: PrayerListItem[] }>(`/prayer${query(params)}`),
+    create: (body: Record<string, unknown>) => post<{ id: string }>('/prayer', body),
+    update: (id: string, body: Record<string, unknown>) => patch<{ ok: true }>(`/prayer/${id}`, body),
+    followUp: (id: string, body: { note?: string; next_followup_days?: number }) =>
+      post<{ ok: true }>(`/prayer/${id}/followup`, body),
+    pray: (id: string) => post<{ ok: true }>(`/prayer/${id}/pray`),
+  },
+
+  imports: {
+    list: () => get<{ items: ImportListItem[] }>('/imports'),
+    get: (id: string) => get<ImportDetail>(`/imports/${id}`),
+    upload: (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      return request<ImportUploadResponse>('/imports', { method: 'POST', body: form });
+    },
+    remap: (id: string, mapping: Record<string, string | null>) =>
+      post<Omit<ImportUploadResponse, 'import_id' | 'filename' | 'columns' | 'warnings'>>(
+        `/imports/${id}/remap`, { mapping },
+      ),
+    commit: (id: string) => post<{ status: string; created?: number; updated?: number }>(`/imports/${id}/commit`),
+  },
+
+  nri: {
+    summary: () => get<NriSummary>('/nri/summary'),
+    triage: (params: { direction?: string; min_score?: number; limit?: number } = {}) =>
+      get<{ items: TriageItem[]; directions: Record<string, DirectionMeta> }>(`/nri/triage${query(params)}`),
+    signals: (subjectId: string) =>
+      get<{ compass: Compass | null; explanations: Explanation[]; source: string }>(`/nri/signals/${subjectId}`),
+    dismiss: (subjectId: string, direction: string) =>
+      post<{ ok: true }>(`/nri/signals/${subjectId}/${direction}/dismiss`),
+    restore: (subjectId: string, direction: string) =>
+      post<{ ok: true }>(`/nri/signals/${subjectId}/${direction}/restore`),
+    session: () => get<NriSessionResponse>('/nri/session'),
+    saveState: (body: Record<string, unknown>) => post<{ ok: true }>('/nri/state', body),
+    rules: () => get<{ version: string; rules: RuleReference[] }>('/nri/rules'),
+    recompute: (memberId?: string) => post<{ recomputed?: number; status?: string }>('/nri/recompute', { member_id: memberId }),
+  },
+
+  admin: {
+    users: () => get<{ items: TeamMember[] }>('/admin/users'),
+    createUser: (body: Record<string, unknown>) => post<{ id: string }>('/admin/users', body),
+    removeUser: (id: string) => del<{ ok: true }>(`/admin/users/${id}`),
+    org: () => get<{ org: OrgRecord }>('/admin/org'),
+    updateOrg: (body: Record<string, unknown>) => patch<{ ok: true }>('/admin/org', body),
+    audit: (params: { subject_id?: string; action?: string } = {}) =>
+      get<{ items: AuditEntry[] }>(`/admin/audit${query(params)}`),
+  },
+
+  cms: {
+    pages: () => get<{ items: CmsPageSummary[] }>('/cms/pages'),
+    page: (id: string) => get<{ page: CmsPageRecord }>(`/cms/pages/${id}`),
+    createPage: (body: Record<string, unknown>) => post<{ id: string; slug: string }>('/cms/pages', body),
+    updatePage: (id: string, body: Record<string, unknown>) => patch<{ ok: true }>(`/cms/pages/${id}`, body),
+  },
+};
+
+function query(params: Record<string, unknown>): string {
+  const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '');
+  if (entries.length === 0) return '';
+  return `?${new URLSearchParams(entries.map(([k, v]) => [k, String(v)])).toString()}`;
+}
+
+// ── Response shapes ──────────────────────────────────────────────────────────
+
+export interface HealthResponse {
+  status: string;
+  app: string;
+  env: string;
+  checks: Record<string, string>;
+  time: string;
+}
+
+export interface SessionUser {
+  id: string;
+  org_id: string;
+  email: string;
+  name: string;
+  role: string;
+}
+
+export interface OrgRecord {
+  id: string;
+  name: string;
+  slug: string;
+  kind: string;
+  timezone?: string;
+  brand: Record<string, string | undefined>;
+}
+
+export interface MeResponse {
+  user: SessionUser | null;
+  org?: OrgRecord | null;
+  demo?: boolean;
+}
+
+export type Direction = 'cura' | 'onus' | 'familia' | 'fides';
+export type Band = 'clear' | 'watch' | 'attend' | 'urgent';
+
+export interface ReasonCode {
+  code: string;
+  label: string;
+  weight: number;
+  detail?: string;
+}
+
+export interface Explanation {
+  direction: Direction;
+  label: string;
+  score: number;
+  band: Band;
+  summary: string;
+  reasons: ReasonCode[];
+  recommended_response: string;
+  source: string;
+  updated_at: string;
+  dismissed: boolean;
+}
+
+export interface Compass {
+  subject_type: string;
+  subject_id: string;
+  scores: Record<Direction, number>;
+  dominant: Direction;
+  peak: number;
+  band: Band;
+  explanations: Explanation[];
+}
+
+export interface DirectionMeta {
+  key: Direction;
+  label: string;
+  description: string;
+  response: string;
+  token: string;
+}
+
+export interface MemberListItem {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string | null;
+  phone: string | null;
+  status: string;
+  member_number: string | null;
+  household_id: string | null;
+  last_contact_at: string | null;
+  onboarding_complete: boolean;
+  compass: Compass | null;
+}
+
+export interface MemberDetail {
+  member: Record<string, unknown> & {
+    id: string; first_name: string; last_name: string;
+    email: string | null; phone: string | null; status: string;
+  };
+  household: Record<string, unknown> | null;
+  needs: NeedListItem[];
+  prayer_requests: PrayerListItem[];
+  documents: { id: string; filename: string; size_bytes: number; created_at: string }[];
+  compass: Compass | null;
+}
+
+export interface HouseholdListItem {
+  id: string;
+  name: string;
+  member_count: number;
+  dependent_count: number;
+  city: string | null;
+  state: string | null;
+  share_amount_cents: number;
+}
+
+export interface HouseholdDetail {
+  household: HouseholdListItem & Record<string, unknown>;
+  members: (MemberListItem & { relationship: string; is_caregiver: number; is_dependent: number })[];
+  needs: NeedListItem[];
+}
+
+export interface NeedListItem {
+  id: string;
+  member_id: string;
+  first_name?: string;
+  last_name?: string;
+  title: string;
+  description?: string | null;
+  category: string;
+  status: string;
+  urgency: string;
+  amount_requested_cents: number;
+  amount_approved_cents: number;
+  amount_shared_cents: number;
+  assigned_to: string | null;
+  assignee_name?: string | null;
+  last_status_change_at: string | null;
+  created_at: string;
+}
+
+export interface NeedUpdateItem {
+  id: string;
+  kind: string;
+  body: string | null;
+  author_name: string | null;
+  created_at: string;
+}
+
+export interface PrayerListItem {
+  id: string;
+  member_id: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  title: string;
+  body: string | null;
+  category: string;
+  status: string;
+  is_urgent: number;
+  prayer_count: number;
+  assigned_to: string | null;
+  assignee_name?: string | null;
+  followup_due_at: string | null;
+  followup_overdue?: number;
+  created_at: string;
+}
+
+export interface ImportListItem {
+  id: string;
+  filename: string;
+  status: string;
+  total_rows: number;
+  valid_rows: number;
+  invalid_rows: number;
+  duplicate_rows: number;
+  created_count: number;
+  updated_count: number;
+  created_by_name: string | null;
+  created_at: string;
+}
+
+export interface InferredColumn {
+  header: string;
+  field: string | null;
+  confidence: number;
+  basis: string;
+  samples: string[];
+}
+
+export interface RowIssue {
+  code: string;
+  field: string | null;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+export interface PreviewRow {
+  row_number: number;
+  raw: Record<string, string>;
+  normalized: Record<string, unknown> | null;
+  action: 'create' | 'update' | 'skip' | 'error';
+  issues: RowIssue[];
+  matched_member_id: string | null;
+  match_reason: string | null;
+}
+
+export interface ImportSummary {
+  total: number; create: number; update: number; skip: number; error: number;
+  with_warnings?: number;
+}
+
+export interface ImportUploadResponse {
+  import_id: string;
+  filename: string;
+  columns: InferredColumn[];
+  mapping: Record<string, string | null>;
+  missing_required: string[];
+  warnings: string[];
+  summary: ImportSummary;
+  households: string[];
+  preview: PreviewRow[];
+}
+
+export interface ImportDetail {
+  import: ImportListItem & { detected_headers: string[] };
+  mapping: Record<string, string | null>;
+  rows: PreviewRow[];
+  summary: ImportSummary;
+}
+
+export interface NriSummary {
+  members: number;
+  households: number;
+  open_needs: number;
+  open_prayer_requests: number;
+  open_need_amount_cents: number;
+  directions: {
+    direction: Direction;
+    label: string;
+    description: string;
+    urgent: number;
+    attend: number;
+    watch: number;
+  }[];
+  source: string;
+  computed_at: string;
+}
+
+export interface TriageItem {
+  member: {
+    id: string; first_name: string; last_name: string;
+    email: string | null; phone: string | null; status: string;
+    household_id: string | null; household_name: string | null;
+    last_contact_at: string | null;
+  };
+  compass: Compass;
+}
+
+export interface Nudge {
+  id: string;
+  direction: Direction;
+  kind: 'action' | 'awareness' | 'reflection';
+  confidence: number;
+  message: string;
+  action?: { label: string; route: string };
+}
+
+export interface NriSessionResponse {
+  nudges: Nudge[];
+  inputs: Record<string, number>;
+  state: {
+    dismissed_nudge_ids: string[];
+    last_auto_open_at: string | null;
+    guide_sections_seen: string[];
+    guide_completed_at: string | null;
+    can_auto_open: boolean;
+  };
+}
+
+export interface RuleReference {
+  code: string;
+  direction: Direction;
+  label: string;
+  weight: number;
+  severity: string;
+  rationale: string;
+}
+
+export interface TeamMember {
+  id: string; email: string; name: string; role: string;
+  last_seen_at: string | null; created_at: string;
+}
+
+export interface AuditEntry {
+  id: string; action: string; actor_name: string | null; actor_kind: string;
+  subject_type: string | null; subject_id: string | null;
+  meta: Record<string, unknown>; created_at: string;
+}
+
+export interface CmsPageSummary {
+  id: string; slug: string; title: string; status: string;
+  published_at: string | null; updated_at: string;
+}
+
+export interface CmsPageRecord extends CmsPageSummary {
+  blocks: Record<string, unknown>[];
+}

@@ -35,6 +35,7 @@ function member(over: Partial<MemberFacts> = {}): MemberFacts {
       share_amount_cents: 45_000,
       recent_membership_changes: 0,
     },
+    is_primary_contact: true,
     needs: [],
     prayer_requests: [],
     unanswered_outreach: 0,
@@ -255,6 +256,51 @@ describe('individual rules behave at their boundaries', () => {
     const orphan = member({ household: null });
     expect(scoreFor(orphan, 'familia').reason_codes.map((r) => r.code))
       .toContain('familia.unassigned_household');
+  });
+});
+
+describe('household complexity lands on one person, not everyone', () => {
+  const bigHousehold = {
+    id: 'hh_big',
+    member_count: 8,
+    dependent_count: 5,
+    caregiver_count: 1,
+    share_amount_cents: 82_500,
+    recent_membership_changes: 2,
+  };
+
+  it('scores household structure on the primary contact', () => {
+    const primary = member({ household: bigHousehold, is_primary_contact: true });
+    const codes = scoreFor(primary, 'familia').reason_codes.map((r) => r.code);
+    expect(codes).toContain('familia.large_household');
+    expect(codes).toContain('familia.many_dependents');
+    expect(codes).toContain('familia.caregiving');
+    expect(codes).toContain('familia.recent_change');
+  });
+
+  it('does not repeat household structure on every dependent', () => {
+    // The bug this guards: eight members of one family each surfacing at 100,
+    // which fills the triage board with a single household and ranks nothing.
+    const dependent = member({ household: bigHousehold, is_primary_contact: false });
+    expect(scoreFor(dependent, 'familia').score).toBe(0);
+  });
+
+  it('still scores a dependent on facts that are genuinely their own', () => {
+    const dependentWithBaby = member({
+      household: bigHousehold,
+      is_primary_contact: false,
+      needs: [need({ category: 'maternity', created_at: daysAgo(20) })],
+    });
+    const codes = scoreFor(dependentWithBaby, 'familia').reason_codes.map((r) => r.code);
+    expect(codes).toContain('familia.new_baby');
+    expect(codes).not.toContain('familia.large_household');
+  });
+
+  it('falls back to scoring everyone when no primary is marked', () => {
+    // A messy import may leave a household with no primary. Duplicated signals
+    // are a better failure than a complex family nobody sees.
+    const noPrimary = member({ household: bigHousehold, is_primary_contact: true });
+    expect(scoreFor(noPrimary, 'familia').score).toBeGreaterThan(0);
   });
 });
 
