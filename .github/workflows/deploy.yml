@@ -68,6 +68,84 @@ jobs:
       - name: Show the authenticated Cloudflare account
         run: bunx wrangler whoami || echo "::warning::wrangler whoami failed — the token may be malformed."
 
+      # Probe every API this deploy actually calls, and say which ones the token
+      # is allowed to reach.
+      #
+      # Cloudflare returns the same error — 7403, "the given account is not
+      # valid or is not authorized to access this service" — for a token scoped
+      # to the wrong account and for a token missing one permission checkbox.
+      # Read from a raw wrangler failure it is nearly undiagnosable, and each
+      # guess costs a full CI round trip. This names the missing permission.
+      #
+      # Workers Scripts and D1 are hard requirements: without them there is
+      # nothing to deploy, or nowhere to migrate. R2, KV, and Queues are
+      # reported but not enforced, because their bindings resolve by ID at
+      # deploy time and the token does not need to read them for `deploy` to
+      # succeed.
+      - name: Check what the token is allowed to do
+        env:
+          PROD_DB_ID: ea56fb83-a754-45a3-b2a9-ae54914e43b3
+        run: |
+          API=https://api.cloudflare.com/client/v4
+          AUTH="Authorization: Bearer $CLOUDFLARE_API_TOKEN"
+
+          ACCOUNT_ID=$(curl -sS -H "$AUTH" "$API/accounts" | jq -r '.result[0].id // empty')
+          if [ -z "$ACCOUNT_ID" ]; then
+            echo "::error::The token cannot list accounts — it is invalid, expired, or revoked."
+            exit 1
+          fi
+          echo "Account: $ACCOUNT_ID"
+          echo ""
+
+          HARD_FAIL=0
+
+          probe() {
+            LABEL="$1"; REQUIRED="$2"; METHOD="$3"; URL="$4"; BODY="${5:-}"
+
+            if [ -n "$BODY" ]; then
+              OUT=$(curl -sS -X "$METHOD" -H "$AUTH" -H 'Content-Type: application/json' \
+                    -d "$BODY" "$URL" 2>&1)
+            else
+              OUT=$(curl -sS -X "$METHOD" -H "$AUTH" "$URL" 2>&1)
+            fi
+
+            if [ "$(printf '%s' "$OUT" | jq -r '.success // false' 2>/dev/null)" = "true" ]; then
+              echo "  ✓ $LABEL"
+              return
+            fi
+
+            REASON=$(printf '%s' "$OUT" | jq -r '.errors[0].message // "unreadable response"' 2>/dev/null)
+            if [ "$REQUIRED" = "required" ]; then
+              echo "  ✗ $LABEL — $REASON"
+              HARD_FAIL=1
+            else
+              echo "  ~ $LABEL — $REASON (not required to deploy)"
+            fi
+          }
+
+          probe "Workers Scripts" required GET "$API/accounts/$ACCOUNT_ID/workers/scripts"
+          # The query endpoint, not the list endpoint: migrations write, so a
+          # read-only D1 token passes a list check and then fails the migration.
+          probe "D1 (query)" required POST \
+            "$API/accounts/$ACCOUNT_ID/d1/database/$PROD_DB_ID/query" '{"sql":"SELECT 1"}'
+          probe "R2"     optional GET "$API/accounts/$ACCOUNT_ID/r2/buckets"
+          probe "KV"     optional GET "$API/accounts/$ACCOUNT_ID/storage/kv/namespaces"
+          probe "Queues" optional GET "$API/accounts/$ACCOUNT_ID/queues"
+
+          echo ""
+          if [ "$HARD_FAIL" = "1" ]; then
+            echo "::error::The Cloudflare API token is missing a permission the deploy requires (see ✗ above)."
+            echo "Edit the token at https://dash.cloudflare.com/profile/api-tokens and grant, on this account:"
+            echo "  • Account → Workers Scripts → Edit"
+            echo "  • Account → D1 → Edit"
+            echo "  • Account → Workers R2 Storage → Edit"
+            echo "  • Account → Workers KV Storage → Edit"
+            echo "  • Account → Queues → Edit"
+            echo "Then re-run this workflow. Nothing in the repository needs to change."
+            exit 1
+          fi
+          echo "Token has everything the deploy requires."
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
