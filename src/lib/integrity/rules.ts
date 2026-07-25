@@ -44,6 +44,16 @@ const hit = (detail: string, weight?: number): IntegrityOutcome =>
 /** The trailing window every ratio rule reads. Three months smooths a lumpy month. */
 const WINDOW = 3;
 
+/**
+ * Minimum observations before a rate is treated as a rate.
+ *
+ * "1 of 1 denials" is a 100% rate carrying almost no information. Without a
+ * floor, a small ministry with a single lapse scores like Aliera — and a score
+ * that cannot distinguish those two is one nobody will trust a second time.
+ * Below this, the rules score the absolute count instead.
+ */
+const MIN_RATE_SAMPLE = 5;
+
 function trailing(facts: IntegrityFacts): PeriodLedger {
   return combineLedgers(facts.ledger.slice(0, WINDOW));
 }
@@ -200,13 +210,21 @@ export const INTEGRITY_RULES: IntegrityRule[] = [
     evaluate: (f) => {
       const unbacked = f.denials.filter((d) => !d.denial_guideline_ref);
       if (unbacked.length === 0) return NO;
-      const rate = f.denials.length > 0 ? unbacked.length / f.denials.length : 0;
       const amount = unbacked.reduce((sum, d) => sum + d.amount_requested_cents, 0);
-      return hit(
+      const detail =
         `${unbacked.length} of ${f.denials.length} denials cite no guideline provision ` +
-        `($${(amount / 100).toLocaleString('en-US')} denied)`,
-        rate >= 0.5 ? 40 : rate >= 0.25 ? 30 : 15,
-      );
+        `($${(amount / 100).toLocaleString('en-US')} denied)`;
+
+      // Below the sample floor, score the count rather than the rate. "1 of 1"
+      // is a 100% rate and almost no information — without this a small
+      // ministry with a single lapse scores like Aliera, and a score that
+      // cannot tell those apart is one nobody will believe twice.
+      if (f.denials.length < MIN_RATE_SAMPLE) {
+        return hit(detail, Math.min(20, unbacked.length * 10));
+      }
+
+      const rate = unbacked.length / f.denials.length;
+      return hit(detail, rate >= 0.5 ? 40 : rate >= 0.25 ? 30 : 15);
     },
   },
   {
@@ -253,8 +271,8 @@ export const INTEGRITY_RULES: IntegrityRule[] = [
       });
       if (unsupported.length === 0) return NO;
       return hit(
-        `${unsupported.length} denial${unsupported.length > 1 ? 's' : ''} cite a provision that ` +
-        'does not support the stated reason',
+        `${unsupported.length} denial${unsupported.length > 1 ? 's cite' : ' cites'} a provision ` +
+        'that does not support the stated reason',
       );
     },
   },
@@ -281,13 +299,19 @@ export const INTEGRITY_RULES: IntegrityRule[] = [
       'turnaround, because the ministry lost a vendor and nothing escalated automatically.',
     evaluate: (f) => {
       if (f.sla_breaches.length === 0) return NO;
-      const rate = f.open_claim_count > 0 ? f.sla_breaches.length / f.open_claim_count : 1;
       const worst = Math.max(...f.sla_breaches.map((b) => b.days_over));
-      return hit(
+      const detail =
         `${f.sla_breaches.length} of ${f.open_claim_count} open claims are past their commitment ` +
-        `(worst: ${worst} days over)`,
-        rate >= 0.5 ? 35 : rate >= 0.25 ? 25 : 15,
-      );
+        `(worst: ${worst} days over)`;
+
+      // Same sample floor as above. Three of four claims late is a bad week at
+      // a small ministry, not evidence of an organization in collapse.
+      if (f.open_claim_count < MIN_RATE_SAMPLE) {
+        return hit(detail, Math.min(20, f.sla_breaches.length * 8));
+      }
+
+      const rate = f.sla_breaches.length / f.open_claim_count;
+      return hit(detail, rate >= 0.5 ? 35 : rate >= 0.25 ? 25 : 15);
     },
   },
   {

@@ -28,7 +28,7 @@ Click **Explore the demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 96 tests over the domain logic |
+| `bun run test` | Vitest — 210 tests over the domain logic |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -103,8 +103,8 @@ Conventions that are not negotiable:
   survive D1's type affinity without surprises.
 - **Soft deletes** via `deleted_at`; live queries filter it.
 
-18 tables in `schema/migrations/0001_initial.sql`, each commented with why it
-looks the way it does.
+18 tables in `schema/migrations/0001_initial.sql` and 6 more in
+`0002_integrity.sql`, each commented with why it looks the way it does.
 
 ---
 
@@ -235,7 +235,8 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-96 tests over the logic that carries the risk: NRI scoring, import parsing and
+210 tests over the logic that carries the risk: NRI scoring, integrity and
+share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
 They pin behavior, not implementation:
@@ -263,6 +264,137 @@ Auxilium runs fully with no third-party keys and no paid plan:
 | Queues (free plan) | Imports commit inline; signals recompute inline. Logged, not silent. |
 | KV unavailable | Login rate limiting fails **open**. A broken limiter must never lock a ministry out on the day it matters. |
 | `SESSION_SECRET` | Dev uses a fixed key with a loud warning. **Production refuses to issue sessions.** |
+
+---
+
+## Claims integrity
+
+V1 answered *who needs help?* This layer answers the question the whole
+category is actually being asked by regulators, journalists, and plaintiffs'
+attorneys: **where did the money go, and can you prove it?**
+
+Every rule here traces to a documented failure. That provenance is deliberate
+and is stored on the rule itself (`INTEGRITY_RULES[].provenance`, published at
+`/api/integrity/rules`): when a ministry disputes a finding, the answer should
+be a specific thing that happened to a real community, not an abstraction.
+
+### The share ratio
+
+Of every dollar members contributed, how many cents reached their medical
+costs? Aliera's answer was ~16. Medical Cost Sharing's was 3.5, while
+distributing nothing at all for months. Both sold the same story as ministries
+doing this honestly, and from outside, before the lawsuits, they were nearly
+indistinguishable.
+
+The ratio is measured against the **ACA medical-loss floor (80% individual,
+85% large group)** — which health care sharing ministries are statutorily
+exempt from. That exemption is the entire reason to measure against it: a
+ministry that clears a bar it is not held to has said something no marketing
+page can, and `/api/integrity/public/:slug` publishes exactly that, opt-in,
+with no member data in it.
+
+### The ledger
+
+`contributions` (money in) and `disbursements` (money out) on one timeline.
+Disbursements carry a `category` that decides which side of the ratio they land
+on, and `related_party` is broken out separately because that is where
+diversion hides — the API refuses a related-party payment that does not state
+the relationship.
+
+**A month with money in and nothing out is the loudest signal this system
+produces.** The ledger query stitches periods by union rather than joining, so
+that month can never be lost to an inner join.
+
+### Guideline consistency
+
+`sharing_guidelines` are versioned and dated, and each provision declares the
+denial reason codes it actually authorizes. That field is load-bearing: the
+signature pattern of this category is marketing "covered from day one" and then
+denying on precisely that basis.
+
+Four findings fall out of it, and all four are the week-it-happens version of a
+deposition exhibit:
+
+- a denial citing no provision at all
+- a denial citing a provision that does not exist
+- a denial citing a provision that does not authorize the stated reason
+- **a denial applying a guideline that took effect after the member joined**
+
+`POST /api/claims/:id/deny` requires both a reason code and a guideline
+reference. It warns loudly — but does not block — when the citation does not
+hold up, because blocking would push staff to pick whatever provision the form
+accepts, and a recorded warning keeps the honest record instead.
+
+### Claims that stop moving
+
+`sla_days` (default 17, the turnaround Share Healthcare publicly stated and
+missed by months) puts a due date on every claim at submission.
+
+Two design decisions worth keeping:
+
+- The clock **pauses** while waiting on the member — but `needs_info` gets its
+  own two-week ageing rule, because that status is exactly where claims go to
+  die, and excluding it entirely would create an incentive to park them there.
+- An **unacknowledged** claim escalates before its deadline. A claim nobody has
+  opened is worse than a slow one: the member cannot tell "being worked" from
+  "lost", and assumes the former until it is too late.
+
+### Reference-based repricing
+
+Chargemaster prices bear little relation to cost. Repricing against the
+Medicare allowable (120–200%, default 150%) commonly saves 20–50% on facility
+claims. Ministries largely lack the infrastructure to do it at all, so they
+share inflated numbers and members carry inflated balances.
+
+Every proposal records its basis, so it reads as a negotiation rather than a
+refusal to pay. A test caught the one dangerous bug here: with no Medicare rate
+on file the arithmetic priced claims to **$0** and reported the full billed
+amount as savings. It now declines to reprice instead.
+
+### Eligibility, before the bill
+
+The cruelest failure in this category happens in the right order but too late:
+years of contributions, then a procedure, then the discovery that it will not
+be shared. `POST /api/claims/eligibility` answers against the guideline version
+that actually **binds that member** and the ministry's real denial history.
+
+It is deliberately never promissory. **"Likely" is the strongest word it may
+use about a future claim** — softening that would recreate the exact harm the
+feature exists to prevent. Every check is written to the audit log, so a member
+told "likely shared" and then denied can point at the record.
+
+### Where things live
+
+| | |
+|---|---|
+| `src/lib/integrity/mlr.ts` | Ratio arithmetic, drift, zero-share runs |
+| `src/lib/integrity/rules.ts` | Every rule, with its provenance |
+| `src/lib/integrity/engine.ts` | Scoring, per-denial audit, recommended actions |
+| `src/lib/claims/intake.ts` | Blocking validation, real NPI check digit |
+| `src/lib/claims/sla.ts` | The clock, escalation, member-facing tracker |
+| `src/lib/claims/repricing.ts` | Medicare reference pricing |
+| `src/lib/claims/eligibility.ts` | Pre-submission prediction |
+| `workers/lib/integrity-service.ts` | D1 → facts → report |
+
+### One calibration rule worth knowing
+
+Rate-based rules have a **minimum sample floor** (`MIN_RATE_SAMPLE = 5`). "1 of
+1 denials" is a 100% rate carrying almost no information, and without the floor
+a small ministry with a single lapse scored identically to Aliera. A score that
+cannot tell those two apart is one nobody will trust a second time.
+
+The demo shows the intended spread: Shelter Valley sits at **50/100 (concern)**
+with an 89% ratio and three real operational lapses; Redemption sits at
+**0/100 (critical)** at 16%.
+
+### Onus, sharpened
+
+NRI's Onus direction was "how heavy is this case". It is now "is this case
+being handled properly", which is what actually predicts a member being
+financially stranded: SLA breach, unacknowledged claim, denial without a
+guideline, incomplete intake, stalled secondary-payer coordination, overdue
+appeal.
+
 
 ---
 

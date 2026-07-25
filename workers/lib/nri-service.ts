@@ -52,11 +52,24 @@ export async function gatherFacts(
     ),
     all<NeedRow>(
       db,
-      `SELECT id, member_id, status, category, urgency, amount_requested_cents,
-              submitted_at, last_status_change_at, created_at, assigned_to
-         FROM needs
-        WHERE org_id = ? AND deleted_at IS NULL AND member_id IN (${placeholders})`,
-      orgId, ...memberIds,
+      `SELECT n.id, n.member_id, n.status, n.category, n.urgency, n.amount_requested_cents,
+              n.submitted_at, n.last_status_change_at, n.created_at, n.assigned_to,
+              n.sla_due_at, n.first_response_at, n.denial_reason_code, n.denial_guideline_ref,
+              n.secondary_payer_status,
+              -- Blocking intake gaps, computed in SQL so the whole fact set is
+              -- still one query. Mirrors the blocking rules in
+              -- src/lib/claims/intake.ts; that module remains authoritative.
+              (CASE WHEN n.procedure_code IS NULL THEN 1 ELSE 0 END
+             + CASE WHEN n.provider_npi IS NULL THEN 1 ELSE 0 END
+             + CASE WHEN n.service_date IS NULL THEN 1 ELSE 0 END
+             + CASE WHEN n.has_itemized_bill = 0 THEN 1 ELSE 0 END) AS intake_blocking_count,
+              (SELECT COUNT(*) FROM appeals a
+                WHERE a.need_id = n.id
+                  AND a.status IN ('submitted', 'in_review', 'more_info')
+                  AND a.due_at IS NOT NULL AND a.due_at < ?) AS overdue_appeal_count
+         FROM needs n
+        WHERE n.org_id = ? AND n.deleted_at IS NULL AND n.member_id IN (${placeholders})`,
+      nowIso(), orgId, ...memberIds,
     ),
     all<PrayerRow>(
       db,
@@ -339,6 +352,10 @@ interface NeedRow {
   id: string; member_id: string; status: string; category: string; urgency: string;
   amount_requested_cents: number; submitted_at: string | null;
   last_status_change_at: string | null; created_at: string; assigned_to: string | null;
+  sla_due_at: string | null; first_response_at: string | null;
+  denial_reason_code: string | null; denial_guideline_ref: string | null;
+  secondary_payer_status: string;
+  intake_blocking_count: number; overdue_appeal_count: number;
 }
 
 interface PrayerRow {
@@ -363,6 +380,13 @@ function toNeedFacts(row: NeedRow): NeedFacts {
     last_status_change_at: row.last_status_change_at,
     created_at: row.created_at,
     assigned_to: row.assigned_to,
+    sla_due_at: row.sla_due_at,
+    first_response_at: row.first_response_at,
+    denial_reason_code: row.denial_reason_code,
+    denial_guideline_ref: row.denial_guideline_ref,
+    secondary_payer_status: row.secondary_payer_status ?? 'not_required',
+    intake_blocking_count: row.intake_blocking_count ?? 0,
+    has_overdue_appeal: (row.overdue_appeal_count ?? 0) > 0,
   };
 }
 

@@ -146,6 +146,38 @@ export const api = {
       get<{ items: AuditEntry[] }>(`/admin/audit${query(params)}`),
   },
 
+  integrity: {
+    report: () => get<IntegrityResponse>('/integrity'),
+    denials: () => get<{ findings: DenialFinding[]; total_at_stake_cents: number }>('/integrity/denials'),
+    history: () => get<{ items: IntegritySnapshot[] }>('/integrity/history'),
+    rules: () => get<{ version: string; rules: IntegrityRuleRef[] }>('/integrity/rules'),
+    recompute: () => post<{ report: IntegrityReport }>('/integrity/recompute'),
+    guidelines: () => get<{ items: GuidelineVersion[] }>('/integrity/guidelines'),
+    recordContribution: (body: Record<string, unknown>) => post<{ id: string }>('/integrity/contributions', body),
+    recordDisbursement: (body: Record<string, unknown>) => post<{ id: string }>('/integrity/disbursements', body),
+  },
+
+  claims: {
+    validate: (body: Record<string, unknown>) =>
+      post<{ issues: IntakeIssue[]; accepted: boolean; missing: string | null }>('/claims/validate', body),
+    submit: (body: Record<string, unknown>) => post<{ id: string; sla_due_at: string }>('/claims', body),
+    escalations: () => get<EscalationsResponse>('/claims/escalations'),
+    tracker: (id: string) => get<TrackerResponse>(`/claims/${id}/tracker`),
+    acknowledge: (id: string) => post<{ ok: true }>(`/claims/${id}/acknowledge`),
+    deny: (id: string, body: { reason_code: string; guideline_ref: string; note?: string }) =>
+      post<{ ok: true; warnings: string[] }>(`/claims/${id}/deny`, body),
+    reprice: (id: string, body: { medicare_cents: number; multiplier_bps?: number }) =>
+      post<{ id: string; result: RepricingResult }>(`/claims/${id}/reprice`, body),
+    repricingSummary: () => get<{ summary: RepricingSummary }>('/claims/repricing/summary'),
+    eligibility: (body: Record<string, unknown>) =>
+      post<{ assessment: EligibilityAssessment }>('/claims/eligibility', body),
+    appeals: (params: { status?: string } = {}) => get<{ items: AppealRecord[] }>(`/claims/appeals${query(params)}`),
+    appeal: (needId: string, body: { member_statement: string }) =>
+      post<{ id: string; due_at: string }>(`/claims/${needId}/appeal`, body),
+    decideAppeal: (appealId: string, body: { outcome: string; decision_note: string; guideline_ref?: string }) =>
+      post<{ ok: true }>(`/claims/appeals/${appealId}/decide`, body),
+  },
+
   cms: {
     pages: () => get<{ items: CmsPageSummary[] }>('/cms/pages'),
     page: (id: string) => get<{ page: CmsPageRecord }>(`/cms/pages/${id}`),
@@ -460,4 +492,184 @@ export interface CmsPageSummary {
 
 export interface CmsPageRecord extends CmsPageSummary {
   blocks: Record<string, unknown>[];
+}
+
+// ── Integrity and claims shapes ──────────────────────────────────────────────
+
+export type IntegrityBand = 'healthy' | 'watch' | 'concern' | 'critical';
+
+export interface PeriodLedger {
+  period: string;
+  contributions_cents: number;
+  fees_cents: number;
+  shared_cents: number;
+  administrative_cents: number;
+  marketing_cents: number;
+  related_party_cents: number;
+  members_shared_with: number;
+  top_payee_name: string | null;
+  top_payee_cents: number;
+}
+
+export interface IntegrityReport {
+  org_id: string;
+  period: string;
+  score: number;
+  band: IntegrityBand;
+  share_ratio_bps: number;
+  trailing_share_ratio_bps: number;
+  totals: PeriodLedger;
+  reason_codes: ReasonCode[];
+  summary: string;
+  recommended_actions: string[];
+  benchmark: {
+    aca_individual_bps: number;
+    aca_large_group_bps: number;
+    ministry_target_bps: number;
+    meets_ministry_target: boolean;
+    meets_aca_individual: boolean;
+  };
+  computed_at: string;
+}
+
+export interface IntegrityResponse {
+  report: IntegrityReport;
+  ledger: PeriodLedger[];
+  rules_version: string;
+}
+
+export interface IntegritySnapshot {
+  period: string;
+  contributions_cents: number;
+  shared_cents: number;
+  share_ratio_bps: number;
+  integrity_score: number;
+  band: IntegrityBand;
+}
+
+export interface IntegrityRuleRef {
+  code: string;
+  label: string;
+  weight: number;
+  provenance: string;
+}
+
+export interface DenialFinding {
+  need_id: string;
+  member_id: string;
+  severity: 'info' | 'warning' | 'serious';
+  code: string;
+  message: string;
+  amount_requested_cents: number;
+  need: { first_name: string; last_name: string; title: string } | null;
+}
+
+export interface GuidelineVersion {
+  version: string;
+  effective_from: string;
+  effective_to: string | null;
+  provisions: {
+    code: string;
+    statement: string;
+    supports_denial_codes: string[];
+    waiting_period_days?: number;
+    annual_limit_cents?: number;
+    category?: string;
+  }[];
+}
+
+export interface IntakeIssue {
+  field: string;
+  code: string;
+  severity: 'blocking' | 'warning';
+  message: string;
+}
+
+export interface SlaState {
+  status: 'on_track' | 'due_soon' | 'breached' | 'severely_breached' | 'closed';
+  days_over: number;
+  days_remaining: number;
+  due_at: string | null;
+  acknowledged: boolean;
+  days_unacknowledged: number;
+  member_message: string;
+  needs_escalation: boolean;
+}
+
+export interface EscalationItem {
+  claim: {
+    id: string; status: string; title: string; amount_requested_cents: number;
+    member_id: string; first_name: string; last_name: string;
+    assignee_name: string | null; submitted_at: string | null;
+  };
+  sla: SlaState;
+}
+
+export interface EscalationsResponse {
+  items: EscalationItem[];
+  total_at_stake_cents: number;
+  sla_days: number;
+}
+
+export interface TrackerStep {
+  key: string;
+  label: string;
+  state: 'done' | 'current' | 'upcoming' | 'failed';
+  at: string | null;
+}
+
+export interface TrackerResponse {
+  claim: {
+    id: string; status: string; title: string; amount_requested_cents: number;
+    denial_reason_code: string | null; denial_note: string | null;
+  };
+  sla: SlaState;
+  steps: TrackerStep[];
+}
+
+export interface RepricingResult {
+  billed_cents: number;
+  medicare_cents: number;
+  multiplier_bps: number;
+  repriced_cents: number;
+  savings_cents: number;
+  savings_bps: number;
+  billed_multiple_bps: number;
+  worthwhile: boolean;
+  explanation: string;
+}
+
+export interface RepricingSummary {
+  claims: number;
+  billed_cents: number;
+  repriced_cents: number;
+  savings_cents: number;
+  savings_bps: number;
+  worthwhile_claims: number;
+}
+
+export interface EligibilityAssessment {
+  verdict: 'likely_shared' | 'uncertain' | 'likely_denied' | 'excluded';
+  confidence: number;
+  factors: { code: string; label: string; detail: string; direction: 'supports' | 'against' }[];
+  member_guidance: string;
+  guideline_version: string | null;
+  next_steps: string[];
+}
+
+export interface AppealRecord {
+  id: string;
+  need_id: string;
+  member_id: string;
+  status: string;
+  member_statement: string;
+  decision_note: string | null;
+  submitted_at: string;
+  due_at: string | null;
+  overdue: number;
+  first_name: string;
+  last_name: string;
+  claim_title: string;
+  amount_requested_cents: number;
+  denial_reason_code: string | null;
 }

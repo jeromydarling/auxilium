@@ -11,6 +11,8 @@ import importRoutes from './api/imports';
 import nriRoutes from './api/nri';
 import adminRoutes from './api/admin';
 import cmsRoutes from './api/cms';
+import integrityRoutes from './api/integrity';
+import claimsRoutes from './api/claims';
 import { handleImportBatch } from './queues/imports';
 import { handleSignalBatch } from './queues/signals';
 
@@ -94,6 +96,8 @@ app.route('/api/imports', importRoutes);
 app.route('/api/nri', nriRoutes);
 app.route('/api/admin', adminRoutes);
 app.route('/api/cms', cmsRoutes);
+app.route('/api/integrity', integrityRoutes);
+app.route('/api/claims', claimsRoutes);
 
 app.notFound((c) => {
   if (c.req.path.startsWith('/api/')) {

@@ -24,6 +24,25 @@ export interface NeedFacts {
   last_status_change_at: string | null;
   created_at: string;
   assigned_to: string | null;
+
+  // ── Claims-integrity inputs ─────────────────────────────────────────────
+  // Onus began as "how heavy is this case". These fields sharpen it into
+  // "is this case being handled properly", which is the question that
+  // actually predicts a member being financially stranded.
+
+  /** The ministry's committed turnaround date for this claim. */
+  sla_due_at: string | null;
+  /** When a human first engaged. Null means nobody has looked at it yet. */
+  first_response_at: string | null;
+  /** Denials must cite a reason and the provision permitting it. */
+  denial_reason_code: string | null;
+  denial_guideline_ref: string | null;
+  /** Whether other coverage has to be exhausted first, and how far along. */
+  secondary_payer_status: string;
+  /** Blocking intake gaps — a claim that cannot be worked as submitted. */
+  intake_blocking_count: number;
+  /** An open appeal past the ministry's own response window. */
+  has_overdue_appeal: boolean;
 }
 
 export interface PrayerFacts {

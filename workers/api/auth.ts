@@ -91,12 +91,19 @@ auth.get('/me', async (c) => {
  * explicitly marked kind='demo'.
  */
 auth.post('/demo', async (c) => {
+  // Prefer the org explicitly marked as the primary demo. There is more than
+  // one demo organization — the well-run ministry and a deliberately failing
+  // one for comparison — and signing in to the failing one by accident would
+  // be the worst possible first impression of the product.
   const user = await first<{ id: string; org_id: string; email: string; name: string; role: string }>(
     c.env.DB,
     `SELECT u.id, u.org_id, u.email, u.name, u.role
        FROM users u JOIN organizations o ON o.id = u.org_id
       WHERE o.kind = 'demo' AND u.deleted_at IS NULL
-      ORDER BY u.created_at LIMIT 1`,
+      ORDER BY
+        CASE WHEN json_extract(o.brand, '$.demo_primary') = 1 THEN 0 ELSE 1 END,
+        u.created_at
+      LIMIT 1`,
   );
 
   if (!user) {

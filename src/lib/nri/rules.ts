@@ -306,6 +306,147 @@ const ONUS_RULES: NriRule[] = [
       return match('Case waiting on member information for over a week');
     },
   },
+
+  // ── Claims integrity ───────────────────────────────────────────────────────
+  // Onus started as "how heavy is this case". These rules sharpen it into "is
+  // this case being handled properly", because that is what actually predicts
+  // a member being financially stranded — and it is the failure mode behind
+  // every public collapse in this category.
+  {
+    code: 'onus.sla_breach',
+    direction: 'onus',
+    label: 'Past the ministry’s turnaround commitment',
+    weight: 30,
+    severity: 'serious',
+    rationale:
+      'A Raleigh family carried their newborn\'s bills for months against a stated 17-day ' +
+      'turnaround. The commitment existed on a website and nowhere in the software, so nothing ' +
+      'escalated until the family went to a news station.',
+    evaluate: (f, now) => {
+      const breached = f.needs.filter((n) => {
+        if (isTerminal(n.status) || !n.sla_due_at) return false;
+        const over = daysBetween(n.sla_due_at, now);
+        return over !== null && over > 0;
+      });
+      if (breached.length === 0) return NO;
+      const worst = Math.max(...breached.map((n) => daysBetween(n.sla_due_at, now) ?? 0));
+      // Past double the typical window this stops being a delay and becomes
+      // the thing members tell journalists about.
+      return match(
+        `${breached.length} claim${breached.length > 1 ? 's' : ''} past commitment (worst: ${worst} days)`,
+        worst >= 30 ? 40 : 30,
+      );
+    },
+  },
+  {
+    code: 'onus.unacknowledged_claim',
+    direction: 'onus',
+    label: 'Claim nobody has looked at',
+    weight: 25,
+    severity: 'serious',
+    rationale:
+      'A claim with no first response is worse than a slow one. The member cannot tell the ' +
+      'difference between "being worked" and "lost", and assumes the former until it is too late.',
+    evaluate: (f, now) => {
+      const silent = f.needs.filter((n) => {
+        if (isTerminal(n.status) || n.first_response_at) return false;
+        const days = daysBetween(n.submitted_at ?? n.created_at, now);
+        return days !== null && days >= 5;
+      });
+      if (silent.length === 0) return NO;
+      const worst = Math.max(
+        ...silent.map((n) => daysBetween(n.submitted_at ?? n.created_at, now) ?? 0),
+      );
+      return match(`${silent.length} claim${silent.length > 1 ? 's have' : ' has'} had no response in ${worst} days`);
+    },
+  },
+  {
+    code: 'onus.denial_without_guideline',
+    direction: 'onus',
+    label: 'Denied without citing a guideline',
+    weight: 35,
+    severity: 'serious',
+    rationale:
+      'A denial that cites no published provision cannot be checked by the member, defended by ' +
+      'the ministry, or explained to a regulator. It is the single clearest sign a case needs ' +
+      're-opening before it becomes a complaint.',
+    evaluate: (f) => {
+      const unbacked = f.needs.filter(
+        (n) => n.status === 'declined' && !n.denial_guideline_ref,
+      );
+      if (unbacked.length === 0) return NO;
+      const amount = unbacked.reduce((sum, n) => sum + n.amount_requested_cents, 0);
+      return match(
+        `${unbacked.length} denial${unbacked.length > 1 ? 's' : ''} cite no guideline ` +
+        `($${(amount / 100).toLocaleString('en-US')})`,
+      );
+    },
+  },
+  {
+    code: 'onus.intake_incomplete',
+    direction: 'onus',
+    label: 'Claim cannot be worked as submitted',
+    weight: 20,
+    severity: 'notable',
+    rationale:
+      'Missing procedure codes and absent itemized bills are the most common reason a claim ' +
+      'silently stalls. Surfacing it as a signal turns a months-long wait into a phone call.',
+    evaluate: (f) => {
+      const blocked = f.needs.filter(
+        (n) => !isTerminal(n.status) && n.intake_blocking_count > 0,
+      );
+      if (blocked.length === 0) return NO;
+      return match(
+        `${blocked.length} open claim${blocked.length > 1 ? 's are' : ' is'} missing information ` +
+        'required to process it',
+      );
+    },
+  },
+  {
+    code: 'onus.secondary_payer_stalled',
+    direction: 'onus',
+    label: 'Secondary-payer coordination stalled',
+    weight: 20,
+    severity: 'notable',
+    rationale:
+      'Ministries commonly defend a delay by pointing out they are the secondary payer and other ' +
+      'coverage must be exhausted first. That is often fair — and it is also where a claim can ' +
+      'sit untouched for months with nobody owning the coordination.',
+    evaluate: (f, now) => {
+      const stalled = f.needs.filter((n) => {
+        if (isTerminal(n.status)) return false;
+        if (n.secondary_payer_status !== 'pending' && n.secondary_payer_status !== 'in_progress') {
+          return false;
+        }
+        const days = daysBetween(n.last_status_change_at ?? n.created_at, now);
+        return days !== null && days >= 21;
+      });
+      if (stalled.length === 0) return NO;
+      return match(
+        `${stalled.length} claim${stalled.length > 1 ? 's' : ''} waiting over three weeks on ` +
+        'other-payer coordination',
+      );
+    },
+  },
+  {
+    code: 'onus.overdue_appeal',
+    direction: 'onus',
+    label: 'Appeal past its response window',
+    weight: 30,
+    severity: 'serious',
+    rationale:
+      'Members across several ministries describe having no way to appeal. An appeals process ' +
+      'that exists but runs late is the same experience with extra steps — and this member has ' +
+      'already been denied once.',
+    evaluate: (f) => {
+      const overdue = f.needs.filter((n) => n.has_overdue_appeal);
+      if (overdue.length === 0) return NO;
+      return match(
+        `${overdue.length} appeal${overdue.length > 1 ? 's are' : ' is'} past the ministry's own ` +
+        'response window',
+      );
+    },
+  },
 ];
 
 function isTerminal(status: string): boolean {

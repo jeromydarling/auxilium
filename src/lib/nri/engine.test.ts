@@ -54,6 +54,13 @@ function need(over: Partial<NeedFacts> = {}): NeedFacts {
     last_status_change_at: daysAgo(5),
     created_at: daysAgo(5),
     assigned_to: 'usr_staff',
+    sla_due_at: daysAhead(12),
+    first_response_at: daysAgo(4),
+    denial_reason_code: null,
+    denial_guideline_ref: null,
+    secondary_payer_status: 'not_required',
+    intake_blocking_count: 0,
+    has_overdue_appeal: false,
     ...over,
   };
 }
@@ -301,6 +308,92 @@ describe('household complexity lands on one person, not everyone', () => {
     // are a better failure than a complex family nobody sees.
     const noPrimary = member({ household: bigHousehold, is_primary_contact: true });
     expect(scoreFor(noPrimary, 'familia').score).toBeGreaterThan(0);
+  });
+});
+
+describe('Onus as claims integrity, not just case weight', () => {
+  it('flags a claim past the ministry’s turnaround commitment', () => {
+    const facts = member({ needs: [need({ sla_due_at: daysAgo(9) })] });
+    const reason = scoreFor(facts, 'onus').reason_codes.find((r) => r.code === 'onus.sla_breach');
+    expect(reason?.detail).toMatch(/worst: 9 days/);
+  });
+
+  it('escalates the weight past a month over commitment', () => {
+    const facts = member({ needs: [need({ sla_due_at: daysAgo(40) })] });
+    const reason = scoreFor(facts, 'onus').reason_codes.find((r) => r.code === 'onus.sla_breach');
+    expect(reason?.weight).toBe(40);
+  });
+
+  it('flags a claim nobody has responded to', () => {
+    const facts = member({ needs: [need({ first_response_at: null, submitted_at: daysAgo(9) })] });
+    expect(scoreFor(facts, 'onus').reason_codes.map((r) => r.code))
+      .toContain('onus.unacknowledged_claim');
+  });
+
+  it('gives a brand-new claim a few days before calling it ignored', () => {
+    const facts = member({ needs: [need({ first_response_at: null, submitted_at: daysAgo(2) })] });
+    expect(scoreFor(facts, 'onus').reason_codes.map((r) => r.code))
+      .not.toContain('onus.unacknowledged_claim');
+  });
+
+  it('flags a denial that cites no guideline, with the amount at stake', () => {
+    const facts = member({
+      needs: [need({ status: 'declined', denial_guideline_ref: null, amount_requested_cents: 6_700_000 })],
+    });
+    const reason = scoreFor(facts, 'onus').reason_codes
+      .find((r) => r.code === 'onus.denial_without_guideline');
+    expect(reason?.detail).toMatch(/\$67,000/);
+  });
+
+  it('accepts a denial that cites its basis', () => {
+    const facts = member({
+      needs: [need({ status: 'declined', denial_guideline_ref: 'elective.excluded' })],
+    });
+    expect(scoreFor(facts, 'onus').reason_codes.map((r) => r.code))
+      .not.toContain('onus.denial_without_guideline');
+  });
+
+  it('flags a claim that cannot be worked as submitted', () => {
+    const facts = member({ needs: [need({ intake_blocking_count: 2 })] });
+    expect(scoreFor(facts, 'onus').reason_codes.map((r) => r.code))
+      .toContain('onus.intake_incomplete');
+  });
+
+  it('flags secondary-payer coordination left sitting', () => {
+    const facts = member({
+      needs: [need({ secondary_payer_status: 'pending', last_status_change_at: daysAgo(30) })],
+    });
+    expect(scoreFor(facts, 'onus').reason_codes.map((r) => r.code))
+      .toContain('onus.secondary_payer_stalled');
+  });
+
+  it('does not flag coordination that is only days old', () => {
+    const facts = member({
+      needs: [need({ secondary_payer_status: 'pending', last_status_change_at: daysAgo(5) })],
+    });
+    expect(scoreFor(facts, 'onus').reason_codes.map((r) => r.code))
+      .not.toContain('onus.secondary_payer_stalled');
+  });
+
+  it('flags an overdue appeal — a member already denied once', () => {
+    const facts = member({ needs: [need({ has_overdue_appeal: true })] });
+    expect(scoreFor(facts, 'onus').reason_codes.map((r) => r.code))
+      .toContain('onus.overdue_appeal');
+  });
+
+  it('leaves a well-run claim entirely alone', () => {
+    expect(scoreFor(member({ needs: [need()] }), 'onus').score).toBe(0);
+  });
+
+  it('compounds a badly-handled claim into urgent', () => {
+    // Past commitment, never acknowledged, missing paperwork, unassigned.
+    const facts = member({
+      needs: [need({
+        sla_due_at: daysAgo(35), first_response_at: null, submitted_at: daysAgo(52),
+        intake_blocking_count: 1, assigned_to: null,
+      })],
+    });
+    expect(bandForScore(scoreFor(facts, 'onus').score)).toBe('urgent');
   });
 });
 

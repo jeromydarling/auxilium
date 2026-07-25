@@ -14,6 +14,8 @@ import { PrayerBoardPage } from '@/routes/PrayerBoardPage';
 import { CommandCenterPage } from '@/routes/CommandCenterPage';
 import { SettingsPage } from '@/routes/SettingsPage';
 import { RulesPage } from '@/routes/RulesPage';
+import { IntegrityPage } from '@/routes/IntegrityPage';
+import { EscalationsPage } from '@/routes/EscalationsPage';
 
 export function App() {
   return (
@@ -57,6 +59,8 @@ function AppRoutes() {
         <Route path="/needs" element={<NeedsPage />} />
         <Route path="/prayer" element={<PrayerBoardPage />} />
         <Route path="/nri" element={<CommandCenterPage />} />
+        <Route path="/integrity" element={<IntegrityPage />} />
+        <Route path="/escalations" element={<EscalationsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/rules" element={<RulesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

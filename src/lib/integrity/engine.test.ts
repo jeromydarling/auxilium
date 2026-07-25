@@ -416,6 +416,63 @@ describe('guideline consistency — the pattern behind every case', () => {
   });
 });
 
+describe('small ministries are not scored like Aliera', () => {
+  // The calibration failure this guards: rate rules on tiny samples. "1 of 1
+  // denials" is a 100% rate and almost no information, and a score that cannot
+  // tell a small ministry's bad week from systemic diversion is one nobody
+  // will trust twice.
+  it('scores a single unbacked denial by count, not by rate', () => {
+    const report = computeIntegrity(
+      facts({ denials: [denial({ denial_guideline_ref: null })] }),
+      NOW,
+    );
+    const reason = report.reason_codes.find((r) => r.code === 'integrity.denials_without_guideline');
+    expect(reason!.weight).toBe(10);
+  });
+
+  it('applies the full rate weight once there is a real sample', () => {
+    const many = Array.from({ length: 6 }, (_, i) =>
+      denial({ need_id: `n${i}`, denial_guideline_ref: i < 4 ? null : 'elective.excluded' }),
+    );
+    const report = computeIntegrity(facts({ denials: many }), NOW);
+    const reason = report.reason_codes.find((r) => r.code === 'integrity.denials_without_guideline');
+    expect(reason!.weight).toBe(40);
+  });
+
+  it('scores a couple of late claims out of four by count', () => {
+    const report = computeIntegrity(
+      facts({
+        open_claim_count: 4,
+        sla_breaches: [{ need_id: 'n1', days_over: 3 }, { need_id: 'n2', days_over: 6 }],
+      }),
+      NOW,
+    );
+    const reason = report.reason_codes.find((r) => r.code === 'integrity.sla_breach_rate');
+    expect(reason!.weight).toBe(16);
+  });
+
+  it('keeps a financially exemplary ministry out of the critical band', () => {
+    // 85% share ratio, one unbacked denial, three of four claims late, one
+    // overdue appeal. That is a ministry with real operational problems and a
+    // clean ledger — it must not read the same as one keeping 84% of the pool.
+    const report = computeIntegrity(
+      facts({
+        denials: [denial({ denial_guideline_ref: null })],
+        open_claim_count: 4,
+        sla_breaches: [
+          { need_id: 'n1', days_over: 27 }, { need_id: 'n2', days_over: 5 }, { need_id: 'n3', days_over: 2 },
+        ],
+        overdue_appeals: 1,
+      }),
+      NOW,
+    );
+    expect(report.band).not.toBe('critical');
+    expect(report.benchmark.meets_aca_individual).toBe(true);
+    // Still flagged — the point is proportion, not silence.
+    expect(report.reason_codes.length).toBeGreaterThan(0);
+  });
+});
+
 describe('claims that stop moving', () => {
   it('flags a breach rate and names the worst case', () => {
     const report = computeIntegrity(
