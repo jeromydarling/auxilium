@@ -4,8 +4,9 @@ import {
   checkLoginRate, recordLoginFailure, clearLoginFailures, requireUser,
   type AppEnv,
 } from '../lib/auth';
-import { first, run } from '../lib/db';
+import { all, first, run } from '../lib/db';
 import { audit } from '../lib/audit';
+import { recomputeMembers } from '../lib/nri-service';
 import { newId } from '../../src/lib/ids';
 import { nowIso } from '../../src/lib/utils';
 
@@ -103,6 +104,31 @@ auth.post('/demo', async (c) => {
   }
 
   await createSession(c, user);
+
+  // Self-heal: signals are derived data and are never written by the seed, so a
+  // freshly seeded demo has an empty command center until something scores it.
+  // The demo is the product's best explanation of itself — it must never be
+  // empty. Scoring is idempotent, so doing this on every cold demo is safe.
+  const signalCount = await first<{ count: number }>(
+    c.env.DB,
+    'SELECT COUNT(*) AS count FROM member_signals WHERE org_id = ?',
+    user.org_id,
+  );
+
+  if ((signalCount?.count ?? 0) === 0) {
+    const members = await all<{ id: string }>(
+      c.env.DB,
+      'SELECT id FROM members WHERE org_id = ? AND deleted_at IS NULL LIMIT 500',
+      user.org_id,
+    );
+    if (members.length > 0) {
+      // Inline rather than queued: the user is looking at the dashboard right
+      // now, and a demo that fills in a few seconds later reads as broken.
+      await recomputeMembers(c.env, user.org_id, members.map((m) => m.id), 'demo.cold_start')
+        .catch((error) => console.error('[auth] demo self-heal failed:', error));
+    }
+  }
+
   return c.json({ user, demo: true });
 });
 
