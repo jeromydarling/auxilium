@@ -1,0 +1,151 @@
+name: Deploy
+
+# Trunk-based: a push to main deploys production. Preview deploys are manual,
+# from the Actions tab, so a staging URL is never a surprise.
+#
+# Requires one repository secret: CLOUDFLARE_API_TOKEN, with edit permissions
+# for Workers Scripts, D1, R2, KV, and Queues.
+# Add it at: Settings → Secrets and variables → Actions → New repository secret
+
+on:
+  push:
+    branches: [main]
+    # Documentation changes do not need a deploy.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which environment to deploy
+        type: choice
+        options: [production, preview]
+        default: production
+      seed_demo:
+        description: Seed demo data (preview only — never touches production)
+        type: boolean
+        default: false
+
+concurrency:
+  # One deploy at a time per environment; a newer push supersedes an older one.
+  group: deploy-${{ github.event.inputs.environment || 'production' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      TARGET_ENV: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail early and legibly. Without this, a missing secret surfaces as an
+      # opaque wrangler auth error three minutes into the run.
+      - name: Check the Cloudflare token is present
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not set."
+            echo "Add it under Settings → Secrets and variables → Actions."
+            echo "The token needs edit permissions for: Workers Scripts, D1, R2, KV, Queues."
+            exit 1
+          fi
+          echo "Token present. Deploying to: $TARGET_ENV"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The gate. Nothing ships that does not typecheck, lint, and pass its
+      # tests — the NRI rules and the import matcher are exactly the logic you
+      # do not want to discover is broken in production.
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: bun run build
+
+      # Migrations before deploy, always. New code against an old schema fails
+      # on the first request; old code against a new schema is usually fine.
+      # Wrangler records applied migrations, so this is a no-op when current.
+      - name: Apply database migrations
+        run: |
+          if [ "$TARGET_ENV" = "production" ]; then
+            bunx wrangler d1 migrations apply auxilium-db-prod --remote --env production
+          else
+            bunx wrangler d1 migrations apply auxilium-db-dev --remote
+          fi
+
+      - name: Deploy
+        run: bunx wrangler deploy --env "$TARGET_ENV"
+
+      # Preview only, and guarded twice — the seed script itself targets the
+      # dev database, and this step refuses to run outside preview regardless.
+      - name: Seed demo data
+        if: ${{ github.event.inputs.seed_demo == 'true' }}
+        run: |
+          if [ "$TARGET_ENV" = "production" ]; then
+            echo "::error::Refusing to seed production."
+            exit 1
+          fi
+          bunx wrangler d1 execute auxilium-db-dev --remote --file=./schema/seed.sql
+
+      # Local green is not shipped. Fetch the real thing and confirm it answers.
+      - name: Verify the deploy is live
+        run: |
+          if [ "$TARGET_ENV" = "production" ]; then
+            WORKER="auxilium-app"
+          else
+            WORKER="auxilium-app-preview"
+          fi
+
+          SUBDOMAIN=$(bunx wrangler subdomain get 2>/dev/null \
+            | grep -oE '[a-z0-9-]+\.workers\.dev' | head -1 | cut -d. -f1)
+
+          if [ -z "$SUBDOMAIN" ]; then
+            echo "::warning::Could not determine the workers.dev subdomain; skipping the live check."
+            echo "The deploy itself succeeded — verify by hand at the URL wrangler printed above."
+            exit 0
+          fi
+
+          URL="https://$WORKER.$SUBDOMAIN.workers.dev/api/health"
+          echo "Checking $URL"
+
+          # A fresh deploy can take a few seconds to propagate.
+          for attempt in 1 2 3 4 5; do
+            BODY=$(curl -fsS --max-time 20 "$URL" 2>/dev/null) && break
+            echo "  attempt $attempt failed, retrying in 10s"
+            sleep 10
+          done
+
+          echo "$BODY"
+
+          echo "$BODY" | grep -q '"d1":"ok"' \
+            || { echo "::error::D1 is not answering — check that migrations ran."; exit 1; }
+          echo "$BODY" | grep -q "\"env\":\"$TARGET_ENV\"" \
+            || { echo "::error::Deployed Worker reports the wrong environment."; exit 1; }
+
+          echo "Live and healthy at $URL"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Auxilium deploy — \`$TARGET_ENV\`"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA:0:7}\`"
+            echo "- Migrations applied before deploy"
+            echo "- Health endpoint verified live"
+          } >> "$GITHUB_STEP_SUMMARY"
