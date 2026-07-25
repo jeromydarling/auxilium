@@ -27,12 +27,18 @@ compatibility_flags = ["nodejs_compat"]
 [placement]
 mode = "smart"
 
-# The SPA. `not_found_handling = "single-page-application"` makes client-side
-# routes like /members/mem_xxx resolve to index.html instead of 404ing.
+# The SPA, mounted under /app. `not_found_handling = "single-page-application"`
+# makes client-side routes like /app/members/mem_xxx resolve to index.html
+# instead of 404ing.
 [assets]
 directory = "./dist/client"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# The Worker runs before static assets so it can own the site root: "/" must
+# reach the marketing renderer rather than being answered with the SPA's
+# index.html. Anything the Worker does not recognise falls through to
+# ASSETS.fetch, which is how /app/* and the JS/CSS bundles are served.
+run_worker_first = true
 
 [observability]
 enabled = true
@@ -116,6 +122,11 @@ mode = "smart"
 directory = "./dist/client"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# The Worker runs before static assets so it can own the site root: "/" must
+# reach the marketing renderer rather than being answered with the SPA's
+# index.html. Anything the Worker does not recognise falls through to
+# ASSETS.fetch, which is how /app/* and the JS/CSS bundles are served.
+run_worker_first = true
 
 [env.preview.observability]
 enabled = true
@@ -180,6 +191,11 @@ mode = "smart"
 directory = "./dist/client"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# The Worker runs before static assets so it can own the site root: "/" must
+# reach the marketing renderer rather than being answered with the SPA's
+# index.html. Anything the Worker does not recognise falls through to
+# ASSETS.fetch, which is how /app/* and the JS/CSS bundles are served.
+run_worker_first = true
 
 [env.production.observability]
 enabled = true

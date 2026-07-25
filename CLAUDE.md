@@ -21,14 +21,15 @@ bun run build
 bun run dev                    # http://localhost:8787
 ```
 
-Click **Explore the demo ministry**. Full Cloudflare walkthrough:
+The site root is the marketing site; the app is at `/app`. Click **Explore the
+demo ministry**. Full Cloudflare walkthrough:
 [`docs/cloudflare-setup.md`](docs/cloudflare-setup.md).
 
 | Command | |
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 210 tests over the domain logic |
+| `bun run test` | Vitest — 242 tests over domain logic and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -235,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-210 tests over the logic that carries the risk: NRI scoring, integrity and
+242 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -394,6 +395,73 @@ being handled properly", which is what actually predicts a member being
 financially stranded: SLA breach, unacknowledged claim, denial without a
 guideline, incomplete intake, stalled secondary-payer coordination, overdue
 appeal.
+
+
+---
+
+## The marketing site
+
+Auxilium's public site is **server-rendered from the Worker**, not the SPA.
+`src/content/` holds a typed registry of pages; `workers/marketing/` renders it
+to HTML with no client JavaScript at all.
+
+That is deliberate. These pages exist to be read by search crawlers and by
+assistants summarizing this category, and both do markedly better with real
+HTML than with an app that paints itself after a bundle loads.
+
+### Routing
+
+| Path | Served by |
+|---|---|
+| `/`, `/claims-integrity`, `/guides/*`, `/compare/*` | Worker, from the registry |
+| `/robots.txt`, `/sitemap.xml`, `/llms.txt` | Worker, generated from the registry |
+| `/api/*` | Hono |
+| `/app/*` | The React SPA, via the ASSETS binding |
+
+`run_worker_first = true` in `wrangler.toml` is load-bearing: without it the
+assets binding answers `/` with the SPA's `index.html` before the Worker ever
+sees the request. Unknown public paths return a **real 404**, not the SPA shell
+— a soft 404 is both an SEO problem and a confusing experience.
+
+The SPA is mounted with `basename="/app"`, so every `<Link to="/members">` in
+the app keeps working unchanged.
+
+### Adding a page
+
+Add it to `src/content/pages.ts`, `guides.ts`, or `comparisons.ts`, then export
+it through `registry.ts`. The sitemap, `llms.txt`, and the guides index all
+derive from that registry, so they cannot go stale and a page cannot ship
+orphaned.
+
+### What the tests enforce
+
+`src/content/content.test.ts` guards the things that rot silently:
+
+- slug uniqueness, and every internal link resolving to a real page
+- application CTAs pointing at `/app/*` rather than a bare path that would 404
+- every guide carrying a category, nesting under `/guides/`, and clearing a
+  minimum depth
+- every home-page statistic carrying a source URL
+- every comparison conceding at least one row to the alternative — a table we
+  win outright is marketing, not a comparison
+- **no ministry is named anywhere on the site**
+- **prose matching the engine.** If a page says "80.0%", it is compared against
+  `ACA_MLR_INDIVIDUAL_BPS`. Change the benchmark in the scoring code and the
+  content tests fail until the copy is updated to match.
+- no claim of preventing fraud or guaranteeing compliance
+
+### Two editorial rules
+
+**Comparisons target software, never ministries.** Large ministries are the
+buyers here. Auxilium competes with the spreadsheet a ministry uses today, a
+generic CRM someone adapted, and legacy administration platforms — so those are
+what the comparison pages address, including where they win. Attack pages about
+prospective customers would be both unfair and strategically self-defeating.
+
+**Documented failures are described as patterns, with sources, never as
+accusations.** The internal code comments cite specific cases as engineering
+provenance; the public site cites the same public record without pointing at
+any organization a reader might be evaluating.
 
 
 ---

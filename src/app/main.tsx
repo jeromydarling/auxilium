@@ -20,7 +20,10 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      {/* The app is mounted at /app; the site root is the marketing site,
+          server-rendered by the Worker. basename keeps every <Link to="/x">
+          working unchanged. */}
+      <BrowserRouter basename="/app">
         <App />
       </BrowserRouter>
     </QueryClientProvider>

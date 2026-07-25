@@ -13,15 +13,17 @@ import adminRoutes from './api/admin';
 import cmsRoutes from './api/cms';
 import integrityRoutes from './api/integrity';
 import claimsRoutes from './api/claims';
+import marketingRoutes from './marketing';
+import { renderNotFound } from './marketing/render';
 import { handleImportBatch } from './queues/imports';
 import { handleSignalBatch } from './queues/signals';
 
 /**
  * The Auxilium Worker.
  *
- * One deployable serves the whole product: Hono handles /api/*, and everything
- * else falls through to the ASSETS binding, which serves the built React SPA
- * with single-page-application fallback so client routes resolve.
+ * One deployable serves the whole product: server-rendered marketing at the
+ * site root, Hono on /api/*, and the React SPA under /app via the ASSETS
+ * binding.
  *
  * Queue consumers are exported from the same module, so import commits and NRI
  * recomputes run in the same code with the same bindings as the request path —
@@ -99,12 +101,37 @@ app.route('/api/cms', cmsRoutes);
 app.route('/api/integrity', integrityRoutes);
 app.route('/api/claims', claimsRoutes);
 
+/**
+ * Public marketing owns the site root; the application lives under /app.
+ *
+ * Mounted after /api/* so it can never shadow an endpoint, and it falls
+ * through to notFound for anything not in the content registry — which is what
+ * lets /app/* reach the SPA below.
+ */
+app.route('/', marketingRoutes);
+
 app.notFound((c) => {
-  if (c.req.path.startsWith('/api/')) {
+  const path = c.req.path;
+
+  if (path.startsWith('/api/')) {
     return c.json({ error: 'No such endpoint.' }, 404);
   }
-  // Non-API paths are the SPA's business.
-  return c.env.ASSETS.fetch(c.req.raw);
+
+  // The SPA and its bundles. The assets binding is configured for
+  // single-page-application fallback, so /app/members/mem_xxx resolves to
+  // index.html rather than 404ing.
+  const isApp = path === '/app' || path.startsWith('/app/');
+  const isStaticFile = /\.[a-z0-9]{2,5}$/i.test(path);
+
+  if (isApp || isStaticFile) {
+    return c.env.ASSETS.fetch(c.req.raw);
+  }
+
+  // Anything else is a genuine miss on the public site. Serving the SPA shell
+  // here would return 200 for a URL that does not exist — a soft 404, which
+  // search engines treat as a quality problem and which leaves a visitor
+  // staring at a loading app instead of being told the page is gone.
+  return c.html(renderNotFound(), 404);
 });
 
 /**
