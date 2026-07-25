@@ -26,7 +26,7 @@ export function normalizeDate(input: string | null | undefined): string | null {
   // the first part exceeds 12 is unambiguous, so honor it.
   const slash = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (slash) {
-    let [, a, b, y] = slash;
+    const [, a, b, y] = slash;
     let year = +y;
     if (year < 100) year += year < 50 ? 2000 : 1900;
     let month = +a;

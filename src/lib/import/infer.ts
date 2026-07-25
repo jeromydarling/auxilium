@@ -35,7 +35,8 @@ export function normalizeHeader(header: string): string {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const PHONE_RE = /^[\d\s()+.\-]{7,}$/;
+// Hyphen last in the class so it is a literal, not a range.
+const PHONE_RE = /^[\d\s()+.-]{7,}$/;
 const DATE_RE = /^(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}-\d{1,2}-\d{2,4})$/;
 const MONEY_RE = /^\(?\$?\s?[\d,]+(\.\d{1,2})?\)?$/;
 const ZIP_RE = /^\d{5}(-\d{4})?$/;

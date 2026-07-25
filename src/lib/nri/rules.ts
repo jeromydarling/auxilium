@@ -1,4 +1,4 @@
-import type { MemberFacts, NriRule, RuleOutcome } from './types';
+import type { NriRule, RuleOutcome } from './types';
 import { daysBetween } from '../utils';
 
 /**

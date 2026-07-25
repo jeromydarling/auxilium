@@ -15,6 +15,7 @@ const NOW = '2026-07-25T12:00:00.000Z';
  * formats, a BOM, quoted commas, an embedded newline, inconsistent status
  * vocabulary, a duplicate row, a nameless row, and a header nobody would guess.
  */
+// eslint-disable-next-line no-irregular-whitespace -- the leading BOM is the point of the first test
 const MESSY_CSV = `﻿Mbr #,First Name,LAST NAME,Primary Email Address,Home Phone,DOB,Household Name,Relation,Monthly Share,Status,Notes
 1001,Ruth,Alvarez,ruth.alvarez@example.org,(555) 010-1122,1979-04-12,Alvarez Household,Head,"$425.00",Active,"Prefers text, not email"
 1002,Daniel,Alvarez,daniel.alvarez@example.org,555.010.1122,3/2/1981,Alvarez Household,Spouse,$0.00,active,
