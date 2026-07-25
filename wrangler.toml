@@ -1,0 +1,231 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Auxilium — Cloudflare Worker configuration
+#
+# One Worker serves both halves of the product:
+#   • /api/*  → Hono router (workers/index.ts)
+#   • /*      → the built React SPA from dist/client via the [assets] binding
+#
+# THE IDS BELOW ARE REAL and already provisioned in the Cloudflare account.
+# If you are forking this into a different account, run `bun run cf:setup`
+# (scripts/cloudflare-setup.sh) and replace every id/database_id below with the
+# values it prints. See docs/cloudflare-setup.md for the full walkthrough.
+#
+# Environment strategy:
+#   • top level      → local development (`wrangler dev`) and the dev resources
+#   • [env.preview]  → deployed staging, shares the *dev* data plane
+#   • [env.production] → real ministry data, its own D1/R2/KV
+# ─────────────────────────────────────────────────────────────────────────────
+
+name = "auxilium-app"
+main = "workers/index.ts"
+compatibility_date = "2025-02-14"
+compatibility_flags = ["nodejs_compat"]
+
+# Smart Placement moves the Worker close to D1 rather than to the eyeball.
+# Auxilium is read-heavy against D1 on nearly every route, so this is the right
+# default. Remove it if you later add latency-sensitive edge-only paths.
+[placement]
+mode = "smart"
+
+# The SPA. `not_found_handling = "single-page-application"` makes client-side
+# routes like /members/mem_xxx resolve to index.html instead of 404ing.
+[assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[observability]
+enabled = true
+
+# Non-secret config only. Secrets go through `wrangler secret put` — never here.
+[vars]
+APP_ENV = "development"
+APP_NAME = "Auxilium"
+# Signals older than this are recomputed on read. Keeps the compass honest
+# without hammering D1 on every page load.
+NRI_SIGNAL_TTL_SECONDS = "900"
+# Hard ceiling on rows accepted from a single CSV upload.
+IMPORT_MAX_ROWS = "10000"
+
+# ── D1 (system of record) ────────────────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "auxilium-db-dev"
+database_id = "74302f2c-3196-478c-9695-f971cb86b5f1"
+migrations_dir = "schema/migrations"
+
+# ── R2 (documents, import source files, member files) ────────────────────────
+# Key prefixes are enforced in workers/lib/storage.ts:
+#   imports/<org>/<import_id>/source.csv
+#   documents/<org>/<yyyy>/<mm>/<doc_id>-<slug>
+#   member-files/<org>/<member_id>/<doc_id>-<slug>
+[[r2_buckets]]
+binding = "DOCUMENTS"
+bucket_name = "auxilium-documents-dev"
+
+# ── KV (fast mutable config + cache ONLY — never the system of record) ───────
+[[kv_namespaces]]
+binding = "CACHE"
+id = "0496371cc04f4a6d88a5a775adc43a4d"
+
+[[kv_namespaces]]
+binding = "CONFIG"
+id = "428a86cb58f8456aba0eaf01ce7b7605"
+
+# ── Queues ───────────────────────────────────────────────────────────────────
+# Queues cannot be created through the API token used by `wrangler d1/kv/r2
+# create` flows in every account tier — if `wrangler queues create` fails, make
+# them in the dashboard (Workers & Pages → Queues) with these exact names.
+#
+# auxilium-imports  → row normalization + commit for uploaded rosters
+# auxilium-signals  → NRI signal recomputation after data changes
+[[queues.producers]]
+binding = "IMPORT_QUEUE"
+queue = "auxilium-imports"
+
+[[queues.producers]]
+binding = "SIGNAL_QUEUE"
+queue = "auxilium-signals"
+
+[[queues.consumers]]
+queue = "auxilium-imports"
+max_batch_size = 25
+max_batch_timeout = 10
+max_retries = 3
+dead_letter_queue = "auxilium-imports-dlq"
+
+[[queues.consumers]]
+queue = "auxilium-signals"
+max_batch_size = 50
+max_batch_timeout = 15
+max_retries = 3
+dead_letter_queue = "auxilium-signals-dlq"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PREVIEW — deployed staging. Deliberately points at the *dev* data plane so
+# preview deploys can never touch real ministry records.
+# Deploy with: bun run deploy:preview
+# ─────────────────────────────────────────────────────────────────────────────
+[env.preview]
+name = "auxilium-app-preview"
+
+[env.preview.placement]
+mode = "smart"
+
+[env.preview.assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[env.preview.observability]
+enabled = true
+
+[env.preview.vars]
+APP_ENV = "preview"
+APP_NAME = "Auxilium (Preview)"
+NRI_SIGNAL_TTL_SECONDS = "900"
+IMPORT_MAX_ROWS = "10000"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "auxilium-db-dev"
+database_id = "74302f2c-3196-478c-9695-f971cb86b5f1"
+migrations_dir = "schema/migrations"
+
+[[env.preview.r2_buckets]]
+binding = "DOCUMENTS"
+bucket_name = "auxilium-documents-dev"
+
+[[env.preview.kv_namespaces]]
+binding = "CACHE"
+id = "0496371cc04f4a6d88a5a775adc43a4d"
+
+[[env.preview.kv_namespaces]]
+binding = "CONFIG"
+id = "428a86cb58f8456aba0eaf01ce7b7605"
+
+[[env.preview.queues.producers]]
+binding = "IMPORT_QUEUE"
+queue = "auxilium-imports"
+
+[[env.preview.queues.producers]]
+binding = "SIGNAL_QUEUE"
+queue = "auxilium-signals"
+
+[[env.preview.queues.consumers]]
+queue = "auxilium-imports"
+max_batch_size = 25
+max_batch_timeout = 10
+max_retries = 3
+dead_letter_queue = "auxilium-imports-dlq"
+
+[[env.preview.queues.consumers]]
+queue = "auxilium-signals"
+max_batch_size = 50
+max_batch_timeout = 15
+max_retries = 3
+dead_letter_queue = "auxilium-signals-dlq"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PRODUCTION — real ministry data. Separate D1, R2, and KV from everything else.
+# Deploy with: bun run deploy:production
+# ─────────────────────────────────────────────────────────────────────────────
+[env.production]
+name = "auxilium-app"
+
+[env.production.placement]
+mode = "smart"
+
+[env.production.assets]
+directory = "./dist/client"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[env.production.observability]
+enabled = true
+
+[env.production.vars]
+APP_ENV = "production"
+APP_NAME = "Auxilium"
+NRI_SIGNAL_TTL_SECONDS = "900"
+IMPORT_MAX_ROWS = "10000"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "auxilium-db-prod"
+database_id = "ea56fb83-a754-45a3-b2a9-ae54914e43b3"
+migrations_dir = "schema/migrations"
+
+[[env.production.r2_buckets]]
+binding = "DOCUMENTS"
+bucket_name = "auxilium-documents-prod"
+
+[[env.production.kv_namespaces]]
+binding = "CACHE"
+id = "97b32f34cc414900b0243b5c4ffd1415"
+
+[[env.production.kv_namespaces]]
+binding = "CONFIG"
+id = "fbccaa55ec0546db851a26822e5cf637"
+
+[[env.production.queues.producers]]
+binding = "IMPORT_QUEUE"
+queue = "auxilium-imports"
+
+[[env.production.queues.producers]]
+binding = "SIGNAL_QUEUE"
+queue = "auxilium-signals"
+
+[[env.production.queues.consumers]]
+queue = "auxilium-imports"
+max_batch_size = 25
+max_batch_timeout = 10
+max_retries = 3
+dead_letter_queue = "auxilium-imports-dlq"
+
+[[env.production.queues.consumers]]
+queue = "auxilium-signals"
+max_batch_size = 50
+max_batch_timeout = 15
+max_retries = 3
+dead_letter_queue = "auxilium-signals-dlq"
