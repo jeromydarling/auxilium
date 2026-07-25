@@ -88,6 +88,36 @@ jobs:
             bunx wrangler d1 migrations apply auxilium-db-dev --remote
           fi
 
+      # Queues must exist before a Worker that declares consumers can deploy,
+      # and wrangler will not create them for you. This is idempotent: an
+      # existing queue is left alone.
+      #
+      # Cloudflare Queues require a paid Workers plan. If creation fails, say so
+      # plainly here rather than letting it surface as an opaque deploy error
+      # further down. Auxilium runs without queues — imports commit inline and
+      # signals recompute inline — but wrangler refuses to deploy while
+      # wrangler.toml still declares consumers, so this needs a human decision.
+      - name: Ensure queues exist
+        run: |
+          MISSING=0
+          for q in auxilium-imports auxilium-signals auxilium-imports-dlq auxilium-signals-dlq; do
+            if bunx wrangler queues info "$q" >/dev/null 2>&1; then
+              echo "  $q — already exists"
+            elif bunx wrangler queues create "$q" >/dev/null 2>&1; then
+              echo "  $q — created"
+            else
+              echo "  $q — could not be created"
+              MISSING=1
+            fi
+          done
+
+          if [ "$MISSING" = "1" ]; then
+            echo "::warning::One or more queues are missing. Cloudflare Queues require a paid Workers plan."
+            echo "If the deploy step fails on a queue binding, either enable Queues on the account"
+            echo "or remove the [[queues.*]] blocks from wrangler.toml — the app degrades to inline"
+            echo "execution without them (see the degradation table in CLAUDE.md)."
+          fi
+
       - name: Deploy
         run: bunx wrangler deploy --env "$TARGET_ENV"
 
