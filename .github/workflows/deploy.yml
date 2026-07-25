@@ -59,6 +59,15 @@ jobs:
         with:
           bun-version: latest
 
+      # Print who the token actually is before spending four minutes on the
+      # build. A token that authenticates can still be scoped to the wrong
+      # account or be missing a single permission, and Cloudflare reports both
+      # as an opaque 7403 from whichever API is hit first. This shows the
+      # account and the granted scopes in the log, which turns "not authorized"
+      # into a specific thing to go fix.
+      - name: Show the authenticated Cloudflare account
+        run: bunx wrangler whoami || echo "::warning::wrangler whoami failed — the token may be malformed."
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
