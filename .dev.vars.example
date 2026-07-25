@@ -1,0 +1,22 @@
+# Copy to .dev.vars for local development. .dev.vars is gitignored — never commit it.
+#
+# In preview/production these are Worker secrets, set with:
+#   wrangler secret put JWT_SECRET --env production
+#
+# Auxilium runs fully without any of these. Missing keys degrade cleanly:
+# auth falls back to a development-only signing key (and logs a loud warning),
+# and AI-assisted triage notes simply don't render. Nothing crashes, nothing
+# hard-blocks. You can exercise the whole product before adding a single key.
+
+# Signs session cookies. REQUIRED in production — the Worker refuses to issue
+# sessions in production if this is unset.
+JWT_SECRET="dev-only-change-me"
+
+# Salts the session token derivation, kept separate from JWT_SECRET so rotating
+# one does not invalidate the other's guarantees.
+SESSION_SECRET="dev-only-change-me-too"
+
+# Optional. Enables AI-drafted triage summaries on the NRI command center.
+# Absent → the panel renders a "not configured" note and the rule-based
+# explanation stands on its own. NRI scoring itself is never AI-dependent.
+ANTHROPIC_API_KEY=""
