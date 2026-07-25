@@ -41,7 +41,7 @@ jobs:
       TARGET_ENV: ${{ github.event.inputs.environment || 'production' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Fail early and legibly. Without this, a missing secret surfaces as an
       # opaque wrangler auth error three minutes into the run.

@@ -262,6 +262,38 @@ npx wrangler d1 execute auxilium-db-dev --remote --command "SELECT COUNT(*) FROM
 
 ## Deploying
 
+### Through CI (the normal path)
+
+`.github/workflows/deploy.yml` deploys production on every push to `main`, and
+preview on demand from the Actions tab. It gates on typecheck, lint, and tests,
+applies migrations before deploying, and then fetches `/api/health` from the
+real URL to confirm the deploy is genuinely live.
+
+**One-time setup — add the repository secret:**
+
+1. Create a Cloudflare API token at **dash.cloudflare.com → My Profile → API
+   Tokens → Create Token**. Give it edit permissions for **Workers Scripts**,
+   **D1**, **Workers R2 Storage**, **Workers KV Storage**, and **Queues**.
+2. In GitHub: **Settings → Secrets and variables → Actions → New repository
+   secret**, named exactly `CLOUDFLARE_API_TOKEN`.
+
+Until that secret exists the workflow fails in about six seconds at its first
+step, on purpose, with a message saying exactly what to add. That is the
+intended behavior, not a broken pipeline.
+
+Nobody can add this for you — GitHub secrets are write-only and encrypted
+against the repository's public key, which is exactly the property you want
+from a credential store.
+
+To deploy preview, or to seed the demo ministry into it: **Actions → Deploy →
+Run workflow**, pick `preview`, and tick *Seed demo data* if wanted. Seeding is
+refused outright for production.
+
+### By hand
+
+Both flows below need `CLOUDFLARE_API_TOKEN` exported, or an interactive
+`npx wrangler login` first.
+
 ### Preview
 
 Deployed staging. It points at the **dev** data plane on purpose, so a preview
