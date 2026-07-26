@@ -56,6 +56,15 @@ export type Block =
   /** The full feature index, rendered from src/content/features.ts. */
   | { type: 'featureIndex' }
   | { type: 'pricing'; heading: string; intro?: string; tiers: PricingTier[]; footnote?: string }
+  /** A plain data table. Columns marked numeric are right-aligned and tabular. */
+  | {
+      type: 'table';
+      heading?: string;
+      intro?: string;
+      columns: { label: string; numeric?: boolean }[];
+      rows: string[][];
+      footnote?: string;
+    }
   | { type: 'stat'; value: string; label: string; source?: Source }
   | { type: 'statRow'; stats: { value: string; label: string; source?: Source }[] }
   | { type: 'prose'; heading?: string; paragraphs: string[] }
@@ -97,6 +106,12 @@ export interface PricingTier {
   includes: string[];
   cta: Cta;
   featured?: boolean;
+  /**
+   * Text for the badge on a featured tier. Explicit rather than hardcoded in
+   * the renderer, because "Most popular" is wrong for a marginal schedule —
+   * every ministry pays every band its volume reaches.
+   */
+  flag?: string;
 }
 
 /** A citation. Every factual claim about the category carries one. */

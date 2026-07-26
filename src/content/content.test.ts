@@ -4,6 +4,16 @@ import { marketingMeta, structuredData, SITE } from './meta';
 import { ACA_MLR_INDIVIDUAL_BPS, ACA_MLR_LARGE_GROUP_BPS } from '../lib/integrity/types';
 import { formatBps } from '../lib/integrity/mlr';
 import { FEATURES, FEATURE_CATEGORIES, featuresByCategory } from './features';
+import {
+  PRICING_BANDS,
+  MINIMUM_MONTHLY_CENTS,
+  platformFeeCents,
+  annualFeeCents,
+  blendedRateBps,
+  volumeForMembers,
+  formatDollars,
+  formatRate,
+} from '../lib/pricing/tiers';
 
 /**
  * Content integrity tests.
@@ -392,16 +402,71 @@ describe('visual blocks', () => {
     }
   });
 
-  it('never prices a tier with a number nobody has agreed to', () => {
-    // Pricing is a business decision, not a content one. Until real figures
-    // exist, a currency amount here would be an invention presented as fact.
-    for (const page of ALL_PAGES) {
-      for (const block of page.blocks) {
-        if (block.type !== 'pricing') continue;
-        for (const tier of block.tiers) {
-          expect(/[$£€]\s?\d/.test(tier.priceNote), `${tier.name} invents a price`).toBe(false);
-        }
-      }
+});
+
+/**
+ * Pricing prose against the biller.
+ *
+ * The same rule the ACA benchmark follows, for the same reason: a marketing
+ * page quoting a rate the billing code does not use is a dispute with a
+ * customer, and it is exactly the kind of drift nobody notices until an invoice
+ * is queried.
+ */
+describe('the pricing page', () => {
+  const pricingPage = pageBySlug('pricing')!;
+  const text = JSON.stringify(pricingPage.blocks);
+
+  it('names every band at the rate the schedule actually charges', () => {
+    for (const band of PRICING_BANDS) {
+      expect(text, `${band.label} rate is missing or wrong`).toContain(formatRate(band.rateBps));
     }
+  });
+
+  it('shows one tier card per band, in order, cheapest rate last', () => {
+    const block = pricingPage.blocks.find((b) => b.type === 'pricing');
+    expect(block?.type).toBe('pricing');
+    if (block?.type !== 'pricing') return;
+    expect(block.tiers).toHaveLength(PRICING_BANDS.length);
+    expect(block.tiers.map((t) => t.name)).toEqual(PRICING_BANDS.map((b) => formatRate(b.rateBps)));
+  });
+
+  it('quotes the real monthly minimum', () => {
+    expect(text).toContain(formatDollars(MINIMUM_MONTHLY_CENTS));
+  });
+
+  it('works every example in the table from the schedule, not by hand', () => {
+    const table = pricingPage.blocks.find((b) => b.type === 'table');
+    expect(table?.type).toBe('table');
+    if (table?.type !== 'table') return;
+
+    expect(table.rows.length).toBeGreaterThan(3);
+    for (const row of table.rows) {
+      const members = Number(row[0].replace(/,/g, ''));
+      const volume = volumeForMembers(members);
+      expect(row[1], `${members} volume`).toBe(formatDollars(volume));
+      expect(row[2], `${members} monthly`).toBe(formatDollars(platformFeeCents(volume)));
+      expect(row[3], `${members} annual`).toBe(formatDollars(annualFeeCents(volume)));
+      expect(row[4], `${members} blended`).toBe(formatRate(blendedRateBps(volume)));
+    }
+  });
+
+  it('shows the blended rate falling as the ministry grows', () => {
+    const table = pricingPage.blocks.find((b) => b.type === 'table');
+    if (table?.type !== 'table') return;
+    const blended = table.rows.map((r) => parseFloat(r[4]));
+    for (let i = 1; i < blended.length; i++) {
+      expect(blended[i]).toBeLessThanOrEqual(blended[i - 1]);
+    }
+  });
+
+  it('discloses what the fee costs the share ratio rather than burying it', () => {
+    // The product's whole argument is that a ministry should be able to show
+    // where every dollar went. That has to include ours.
+    expect(text.toLowerCase()).toContain('share ratio');
+    expect(text.toLowerCase()).toMatch(/did not reach a medical bill|administrative cost/);
+  });
+
+  it('promises no per-claim fee anywhere it mentions claims pricing', () => {
+    expect(text.toLowerCase()).toContain('no per-claim fee');
   });
 });

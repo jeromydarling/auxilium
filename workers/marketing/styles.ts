@@ -173,6 +173,10 @@ tr:last-child td{border-bottom:0}
 .mark{text-align:center;font-weight:680;width:104px;font-size:16px}
 .mark.yes{color:var(--good)}.mark.partial{color:var(--warn)}.mark.no{color:var(--bad)}
 .note{color:var(--muted);font-size:13.5px}
+/* Figures line up digit-for-digit; a pricing table that does not is unreadable. */
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr:hover td{background:var(--card-2)}
+.table-foot{color:var(--faint);font-size:13.5px;margin:18px 0 0;max-width:78ch}
 
 /* ── Callout / FAQ / quote ──────────────────────────────────────────────── */
 .callout{border-left:3px solid var(--primary);background:var(--card);padding:20px 24px;

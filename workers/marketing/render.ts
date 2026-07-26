@@ -154,7 +154,7 @@ function renderBlock(block: Block, page: MarketingPage): string {
           ${block.intro ? `<p class="intro reveal">${esc(block.intro)}</p>` : ''}
           <div class="tiers">
             ${block.tiers.map((t, i) => `<article class="tier ${t.featured ? 'featured' : ''} reveal reveal-${Math.min(i + 1, 5)}">
-              ${t.featured ? '<span class="tier-flag">Most ministries</span>' : ''}
+              ${t.featured && t.flag ? `<span class="tier-flag">${esc(t.flag)}</span>` : ''}
               <h3>${esc(t.name)}</h3>
               <p class="tier-who">${esc(t.forWho)}</p>
               <p class="tier-price">${esc(t.priceNote)}</p>
@@ -163,6 +163,27 @@ function renderBlock(block: Block, page: MarketingPage): string {
             </article>`).join('')}
           </div>
           ${block.footnote ? `<p class="tier-foot reveal">${esc(block.footnote)}</p>` : ''}
+        </div>
+      </section>`;
+
+    case 'table':
+      return `<section class="band">
+        <div class="wrap">
+          ${block.heading ? `<h2 class="reveal">${esc(block.heading)}</h2>` : ''}
+          ${block.intro ? `<p class="intro reveal">${esc(block.intro)}</p>` : ''}
+          <div class="table-scroll reveal">
+            <table>
+              <thead><tr>${block.columns
+                .map((c) => `<th${c.numeric ? ' class="num"' : ''}>${esc(c.label)}</th>`)
+                .join('')}</tr></thead>
+              <tbody>
+                ${block.rows.map((row) => `<tr>${row
+                  .map((cell, i) => `<td${block.columns[i]?.numeric ? ' class="num"' : ''}>${esc(cell)}</td>`)
+                  .join('')}</tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+          ${block.footnote ? `<p class="table-foot reveal">${esc(block.footnote)}</p>` : ''}
         </div>
       </section>`;
 

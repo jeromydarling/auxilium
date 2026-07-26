@@ -376,6 +376,46 @@ told "likely shared" and then denied can point at the record.
 | `src/lib/claims/repricing.ts` | Medicare reference pricing |
 | `src/lib/claims/eligibility.ts` | Pre-submission prediction |
 | `workers/lib/integrity-service.ts` | D1 → facts → report |
+| `src/lib/pricing/tiers.ts` | The platform fee schedule |
+
+---
+
+## Pricing
+
+The commercial model lives in code, not in a spreadsheet someone emails around:
+**the greater of a $9 monthly minimum or a graduated percentage of settled
+member contribution volume** — 1.50% of the first $1.25M a month, 0.75% of the
+next $11.25M, 0.50% above $12.5M.
+
+Graduated means marginal, like tax brackets. Crossing a threshold lowers the
+rate on the additional volume only, so growing across a boundary can never
+increase the bill. A test asserts that directly, by walking the whole curve and
+checking it never steps down.
+
+Three decisions worth keeping:
+
+- **Tiers are volume, not headcount.** Billing per member invites an argument
+  about whether spouses, dependents, inactive members, and partial-month
+  joiners count. Settled dollars are unambiguous and both sides can reconcile
+  them against the same ledger.
+- **No per-claim fee, ever.** A fee that scales with claims processed creates a
+  quiet incentive to process fewer of them. For software whose whole argument is
+  that stalled claims strand families, that would be self-defeating.
+- **The fee is disclosed as a cost to the share ratio.** A platform fee is money
+  that did not reach a medical bill. At the first band it is 1.50% of
+  contributions — about 7.5% of the roughly twenty points of room the 80%
+  medical-loss floor leaves. Software that asks a ministry to measure where
+  every dollar went does not get to be vague about its own.
+
+Every figure on `/pricing` is computed from this module rather than typed, the
+same rule the ACA benchmark follows. Change the schedule and the page changes
+with it; the content tests fail until the two agree.
+
+**`formatRate` rounds in basis-point space** before formatting. Two decimals of
+a percentage *is* one basis point, and `(82.5/100).toFixed(2)` renders "0.82"
+rather than "0.83" because 0.825 has no exact binary representation. Each of
+those digits is a rate a ministry could hold us to, so the whole published rate
+card is pinned in a test.
 
 ### One calibration rule worth knowing
 
@@ -518,16 +558,19 @@ any organization a reader might be evaluating.
 
 ## Deploying
 
-**Two things deploy this repo, and they produce two different live Workers.**
-That is surprising enough to state plainly.
+**GitHub Actions on push to `main` is the only deploy path.** It builds with
+`--env production`, so the live Worker is `auxilium-app` bound to the
+production D1/R2/KV. Production is `https://auxilium-app.jer-f84.workers.dev`.
 
-| Worker | Deployed by | Config used | Data plane |
-|---|---|---|---|
-| `auxilium-app` | GitHub Actions on push to `main` | `--env production` | **production** D1/R2/KV |
-| `auxilium` | Cloudflare Workers Builds, connected to this repo | top level, no `--env` | **dev** D1/R2/KV |
+Cloudflare Workers Builds was previously also connected to this repository and
+deployed on every push. It has been disconnected, because two systems deploying
+the same repo to the same Worker name is a race with a silent loser.
 
-Both are publicly reachable on `*.jer-f84.workers.dev`. Production is
-`https://auxilium-app.jer-f84.workers.dev`.
+**The top-level config is deliberately not named `auxilium-app`.** It is
+`auxilium-dev`. While the two shared a name, a bare `wrangler deploy` — which
+is what a Cloudflare-side build runs — republished *production* bound to the
+**dev** database, and nothing about the result looked wrong. Different names,
+and that class of accident is no longer expressible.
 
 Two consequences worth holding onto:
 
@@ -554,9 +597,11 @@ printed. That last step used to derive a hostname, fail to find one, and exit 0
 with a warning — reporting green without checking anything. If it cannot
 determine where it deployed, it now fails.
 
-**The `auxilium` Worker serves the whole public site bound to the dev
-database.** If that is not wanted, disconnect Workers Builds in the Cloudflare
-dashboard, or point its deploy command at `--env production`.
+A leftover `auxilium` Worker from the Workers Builds era may still exist in the
+account, publicly serving an old copy of the site against the **dev** database.
+It is not deployed by anything in this repository. Delete it in the Cloudflare
+dashboard — two live copies of the marketing site is also duplicate content for
+search.
 
 ---
 

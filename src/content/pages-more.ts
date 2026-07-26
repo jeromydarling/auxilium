@@ -1,6 +1,18 @@
 import type { MarketingPage } from './types';
 import { ACA_MLR_INDIVIDUAL_BPS } from '../lib/integrity/types';
 import { formatBps } from '../lib/integrity/mlr';
+import {
+  PRICING_BANDS,
+  MINIMUM_MONTHLY_CENTS,
+  ILLUSTRATIVE_MONTHLY_CONTRIBUTION_CENTS,
+  platformFeeCents,
+  annualFeeCents,
+  blendedRateBps,
+  volumeForMembers,
+  headroomShareBps,
+  formatDollars,
+  formatRate,
+} from '../lib/pricing/tiers';
 
 /**
  * The rest of the public site: features, pricing, security, who it is for,
@@ -13,6 +25,23 @@ import { formatBps } from '../lib/integrity/mlr';
 
 const ACA_INDIVIDUAL = formatBps(ACA_MLR_INDIVIDUAL_BPS); // "80.0%"
 const UPDATED = '2026-07-26';
+
+/**
+ * Pricing prose is derived, never typed.
+ *
+ * Same rule as the ACA benchmark above: if the schedule in src/lib/pricing
+ * changes, every figure on the pricing page moves with it, and the tests fail
+ * until they agree. A marketing page quoting a rate the biller does not use is
+ * a dispute waiting to happen.
+ */
+const BAND_1_MEMBERS = 5_000;
+const BAND_2_MEMBERS = 50_000;
+const SMALL_BLENDED_BPS = blendedRateBps(volumeForMembers(1_000));
+const LARGE_BLENDED_BPS = blendedRateBps(volumeForMembers(300_000));
+const SMALL_HEADROOM_SHARE = headroomShareBps(
+  volumeForMembers(1_000),
+  ACA_MLR_INDIVIDUAL_BPS,
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Features
@@ -60,100 +89,208 @@ const features: MarketingPage = {
 // Pricing
 // ─────────────────────────────────────────────────────────────────────────────
 
+const PRICING_EXAMPLES = [100, 1_000, 5_000, 10_000, 50_000, 100_000, 300_000];
+
 const pricing: MarketingPage = {
   slug: 'pricing',
   kind: 'landing',
   title: 'Pricing — Auxilium',
-  h1: 'Priced by the size of the roster you are carrying',
+  h1: 'You pay a share of what members actually contribute',
   description:
-    'How Auxilium is packaged for ministries of different sizes, what is included at each level, ' +
-    'and why the whole product is available to try before any conversation about cost.',
+    'Auxilium charges the greater of $9 a month or a graduated percentage of settled member ' +
+    'contribution volume: 1.50% of the first $1.25M, 0.75% of the next $11.25M, 0.50% above that. ' +
+    'No implementation fee, no per-seat licence, no per-claim charge.',
   priority: 0.8,
   updated: UPDATED,
   blocks: [
     {
       type: 'hero',
       kicker: 'Pricing',
-      heading: 'Priced by the size of the roster you are carrying',
+      heading: 'You pay a share of what members actually contribute',
       subheading:
-        'Every tier includes the whole product. The difference is roster size and the depth of ' +
-        'support, not which safety features you are allowed to have.',
+        'No implementation fee. No per-seat licence. No charge per claim. The monthly fee is the ' +
+        'greater of $9 or a graduated percentage of settled contribution volume — and the ' +
+        'percentage falls as the ministry grows.',
       cta: { label: 'Try it with demo data first', href: '/app/login' },
       secondaryCta: { label: 'See every feature', href: '/features' },
-      trust: ['No card to open the demo', 'Your data stays yours', 'Export at any time'],
-    },
-    {
-      type: 'callout',
-      tone: 'plain',
-      heading: 'Integrity features are never a paid upgrade',
-      body:
-        'Share-ratio reporting, guideline-consistency checks, and the claims clock are in every ' +
-        'tier. Putting the accountability features behind the expensive plan would mean the ' +
-        'ministries least able to afford scrutiny get the least of it, which is precisely backwards.',
+      trust: [
+        'No card to open the demo',
+        'Every feature in every tier',
+        'Export your data at any time',
+      ],
     },
     {
       type: 'pricing',
-      heading: 'Three shapes',
+      heading: 'Three marginal bands',
       intro:
-        'Ministries in this category range from a few hundred households to well over a hundred ' +
-        'thousand, and the work is genuinely different at each end.',
-      tiers: [
+        'Marginal means these work like tax brackets. Crossing a threshold lowers the rate on the ' +
+        'additional volume only — it never reprices the whole book, so growing across a boundary ' +
+        'can never increase the bill.',
+      tiers: PRICING_BANDS.map((band, i) => ({
+        name: formatRate(band.rateBps),
+        forWho: band.label,
+        priceNote:
+          i === 0
+            ? `Roughly the first ${(BAND_1_MEMBERS).toLocaleString('en-US')} members`
+            : i === 1
+              ? `Roughly members ${(BAND_1_MEMBERS + 1).toLocaleString('en-US')}–${BAND_2_MEMBERS.toLocaleString('en-US')}`
+              : `Everything above ${BAND_2_MEMBERS.toLocaleString('en-US')} members`,
+        includes:
+          i === 0
+            ? [
+                'The entire product, every feature',
+                `A ${formatDollars(MINIMUM_MONTHLY_CENTS)} monthly minimum, and nothing else`,
+                'No implementation or onboarding fee',
+              ]
+            : i === 1
+              ? [
+                  'Applies only to volume above the first band',
+                  'Claims SLAs, appeals, and reference repricing',
+                  'Onboarding help with your first real import',
+                ]
+              : [
+                  'Applies only to volume above the second band',
+                  'Multiple organizations under one roof',
+                  'Data-migration support from a legacy platform',
+                ],
+        cta: { label: 'Start with the demo', href: '/app/login' },
+        // The first band is highlighted because it is the one every ministry
+        // pays, whatever its size — not because it is a package anyone picks.
+        featured: i === 0,
+        flag: i === 0 ? 'Every ministry starts here' : undefined,
+      })),
+      footnote:
+        'Tiers are measured in contribution volume rather than headcount on purpose. Billing on ' +
+        'members invites an argument about whether spouses, dependents, inactive members, and ' +
+        'partial-month joiners count. Settled dollars are unambiguous, and both sides can ' +
+        'reconcile them against the same ledger.',
+    },
+    {
+      type: 'table',
+      heading: 'What that actually costs',
+      intro:
+        'Worked from the schedule above, illustrated at ' +
+        `${formatDollars(ILLUSTRATIVE_MONTHLY_CONTRIBUTION_CENTS)} of average monthly ` +
+        'contribution per member. Your figures will differ; the arithmetic will not.',
+      columns: [
+        { label: 'Members' },
+        { label: 'Monthly volume', numeric: true },
+        { label: 'Monthly fee', numeric: true },
+        { label: 'Per year', numeric: true },
+        { label: 'Blended rate', numeric: true },
+      ],
+      rows: PRICING_EXAMPLES.map((members) => {
+        const volume = volumeForMembers(members);
+        return [
+          members.toLocaleString('en-US'),
+          formatDollars(volume),
+          formatDollars(platformFeeCents(volume)),
+          formatDollars(annualFeeCents(volume)),
+          formatRate(blendedRateBps(volume)),
+        ];
+      }),
+      footnote:
+        'The blended rate is the column that matters — not the headline band, but the share of ' +
+        'contributions the platform actually consumed. It falls the whole way down the table.',
+    },
+    {
+      type: 'callout',
+      tone: 'caution',
+      heading: 'What this fee does to your share ratio, stated plainly',
+      body:
+        `A platform fee is money that did not reach a medical bill. At the first band it is ` +
+        `${formatRate(SMALL_BLENDED_BPS)} of contributions — about ` +
+        `${SMALL_HEADROOM_SHARE}% of the roughly twenty points of room the ${ACA_INDIVIDUAL} ` +
+        `medical-loss floor leaves a ministry. By ${(300_000).toLocaleString('en-US')} members it ` +
+        `is ${formatRate(LARGE_BLENDED_BPS)}. Software that asks you to measure where every dollar ` +
+        'went does not get to be vague about its own, so Auxilium counts its own fee as an ' +
+        'administrative cost in your share ratio rather than quietly excluding it.',
+    },
+    {
+      type: 'featureList',
+      heading: 'What is not on the invoice',
+      intro: 'Each of these is a deliberate omission, not an oversight.',
+      features: [
         {
-          name: 'Community',
-          forWho: 'Ministries under about 2,000 members',
-          priceNote: 'Talk to us',
-          includes: [
-            'The whole product, every feature',
-            'Roster import with preview and dedupe',
-            'NRI scoring and the triage board',
-            'Share-ratio reporting and the public page',
-            'Email support',
-          ],
-          cta: { label: 'Start with the demo', href: '/app/login' },
+          title: 'No per-claim fee',
+          body:
+            'A charge that scales with claims processed creates a quiet incentive to process ' +
+            'fewer of them. For software whose entire argument is that stalled claims strand ' +
+            'families, that would be self-defeating.',
         },
         {
-          name: 'Ministry',
-          forWho: 'The range most established ministries sit in',
-          priceNote: 'Talk to us',
-          includes: [
-            'Everything in Community',
-            'Claims SLAs, appeals, and reference repricing',
-            'Guideline versioning and denial-consistency findings',
-            'White-label member-facing pages',
-            'Onboarding help with your first real import',
-          ],
-          cta: { label: 'Start with the demo', href: '/app/login' },
-          featured: true,
+          title: 'No per-seat licence',
+          body:
+            'Charging per staff login discourages exactly the thing that makes the product work — ' +
+            'giving everyone who touches member care their own account and audit trail.',
         },
         {
-          name: 'Network',
-          forWho: 'Large ministries and multi-entity groups',
-          priceNote: 'Talk to us',
-          includes: [
-            'Everything in Ministry',
-            'Multiple organizations under one roof',
-            'Bulk historical import and reconciliation',
-            'Data-migration support from a legacy platform',
-            'A named contact',
-          ],
-          cta: { label: 'Start with the demo', href: '/app/login' },
+          title: 'No implementation fee',
+          body:
+            'Import is preview-first and designed to be self-service. Charging a five-figure ' +
+            'onboarding fee for a CSV upload would be difficult to justify.',
+        },
+        {
+          title: 'No paywall on integrity',
+          body:
+            'Share-ratio reporting, guideline-consistency checks, and the claims clock are in ' +
+            'every band. Putting accountability behind the expensive plan would mean the ' +
+            'ministries least able to afford scrutiny get the least of it.',
+        },
+        {
+          title: 'Processing costs are passed through',
+          body:
+            'Payment-processing expense is billed at cost and shown separately rather than ' +
+            'folded into the platform rate, so you can see both numbers.',
+        },
+        {
+          title: 'Sharing funds are never ours',
+          body:
+            'Member contributions settle into the ministry\u2019s own account. Auxilium invoices its ' +
+            'platform fee against that account at month end; it never holds sharing funds as ' +
+            'operating money.',
         },
       ],
-      footnote:
-        'Figures are set per ministry rather than published as a rate card, because roster size, ' +
-        'how much history needs migrating, and whether claims are already being administered ' +
-        'somewhere else change the work substantially. The demo needs no conversation at all.',
     },
     {
       type: 'faq',
       heading: 'Fair questions about cost',
       items: [
         {
+          question: 'Why a percentage rather than a flat subscription?',
+          answer:
+            'Because the work scales with contributions, and so should the cost. A flat fee that ' +
+            'suits a ministry of 50,000 would be unaffordable for one of 300, and a flat fee that ' +
+            'suits the small ministry would not fund supporting the large one. The $9 minimum ' +
+            'exists so a very small ministry pays something close to nothing.',
+        },
+        {
+          question: 'Does the fee go up if we grow past a threshold?',
+          answer:
+            'Only on the new volume. The bands are marginal, like tax brackets: crossing $1.25M a ' +
+            'month means the dollars above that line are billed at 0.75%, while everything below ' +
+            'stays at 1.50%. Growing can never make the bill jump.',
+        },
+        {
+          question: 'What if $9 is more than the percentage?',
+          answer:
+            'Then you pay $9. Below roughly $600 a month of contribution volume the minimum is ' +
+            'what governs, which does mean the effective rate is above 1.50% at that size. In ' +
+            'absolute terms it is nine dollars.',
+        },
+        {
+          question: 'How is volume measured?',
+          answer:
+            'Settled member contributions in the calendar month — money that actually arrived. ' +
+            'Auxilium records volume through the month, calculates the graduated fee at month end, ' +
+            'and invoices the ministry\u2019s account. Refunds and disputes are netted out.',
+        },
+        {
           question: 'Can we try it with our own roster before committing?',
           answer:
-            'Yes, and it is the sensible order. Import is preview-first: nothing is written to the ' +
-            'members table until a human commits, so you can run your real export through it and ' +
-            'look at what would happen without anything happening.',
+            'Yes, and it is the sensible order. Import is preview-first: nothing is written to ' +
+            'the members table until a human commits, so you can run your real export through it ' +
+            'and see exactly what would happen without anything happening.',
         },
         {
           question: 'What happens to our data if we leave?',
@@ -161,19 +298,6 @@ const pricing: MarketingPage = {
             'You export it. A ministry whose records are hostage to a vendor has swapped one ' +
             'accountability problem for another, and the whole argument of this product is that ' +
             'you should be able to demonstrate what you are doing at any moment.',
-        },
-        {
-          question: 'Do we pay more to publish our share ratio?',
-          answer:
-            'No. The public transparency page is included at every tier and is opt-in. Charging ' +
-            'for the ability to show your working would be an odd position for software that ' +
-            'exists to encourage exactly that.',
-        },
-        {
-          question: 'Is there a per-claim fee?',
-          answer:
-            'No. A fee that scales with claims volume creates a quiet incentive to process fewer ' +
-            'of them, which is the opposite of what a member needs.',
         },
       ],
     },
