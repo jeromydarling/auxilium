@@ -1,5 +1,6 @@
 import { Hono, type Context } from 'hono';
 import type { Env } from '../lib/env';
+import type { AppEnv } from '../lib/auth';
 import { ALL_PAGES, pageBySlug, pathFor, guides, comparisons } from '../../src/content/registry';
 import { SITE } from '../../src/content/meta';
 import { renderPage } from './render';
@@ -18,7 +19,19 @@ import { RESERVED_SLUGS } from '../../src/lib/cms/blocks';
  * Everything here is anonymous, cacheable, and free of member data.
  */
 
-const marketing = new Hono<{ Bindings: Env }>();
+/**
+ * The same context type as the rest of the Worker.
+ *
+ * Marketing needs none of the auth variables, but a narrower type here would
+ * make this router structurally incompatible with the entry module that calls
+ * into it — and the fix for that would be a cast, which is a worse thing to
+ * have than one unused field. `ministryDomain` is the one it does read: set by
+ * the host check in workers/index.ts when a request arrived on a ministry's own
+ * verified domain, and read to decide whether links carry a `/slug` prefix.
+ */
+type MarketingEnv = AppEnv;
+
+const marketing = new Hono<MarketingEnv>();
 
 /** The origin to build canonical URLs from — taken from the actual request. */
 function originOf(url: string): string {
@@ -71,8 +84,17 @@ marketing.get('/sitemap.xml', async (c) => {
   // website — and the first thing most of them will check is whether Google
   // can find it.
   for (const row of await publishedMinistryPages(c.env)) {
+    // A ministry with its own verified domain is listed at that domain, not at
+    // /{slug}. Both addresses answer — taking the path away the moment a TXT
+    // record appears would break it while their routing record propagates — but
+    // only one of them belongs in a sitemap, and it is the one with their name
+    // on it. This matches the canonical the pages themselves declare.
+    const loc = row.custom_domain
+      ? `https://${row.custom_domain}${row.slug === 'home' ? '/' : `/${row.slug}`}`
+      : `${origin}/${row.org_slug}${row.slug === 'home' ? '' : `/${row.slug}`}`;
+
     urls.push(`  <url>
-    <loc>${origin}/${row.org_slug}${row.slug === 'home' ? '' : `/${row.slug}`}</loc>
+    <loc>${loc}</loc>
     <lastmod>${row.updated_at.slice(0, 10)}</lastmod>
     <priority>0.6</priority>
   </url>`);
@@ -93,9 +115,10 @@ marketing.get('/sitemap.xml', async (c) => {
  * Failing open here would index a ministry's half-written page.
  */
 async function publishedMinistryPages(env: Env) {
-  return all<{ org_slug: string; slug: string; updated_at: string }>(
+  return all<{ org_slug: string; slug: string; updated_at: string; custom_domain: string | null }>(
     env.DB,
-    `SELECT o.slug AS org_slug, p.slug, p.updated_at
+    `SELECT o.slug AS org_slug, p.slug, p.updated_at,
+            CASE WHEN o.custom_domain_verified_at IS NOT NULL THEN o.custom_domain END AS custom_domain
        FROM cms_pages p JOIN organizations o ON o.id = p.org_id
       WHERE p.status = 'published' AND p.deleted_at IS NULL
         AND o.site_published_at IS NOT NULL AND o.deleted_at IS NULL
@@ -231,7 +254,7 @@ marketing.get('/', (c) => renderSlug(c, ''));
 marketing.get('/:a', (c) => renderSlug(c, c.req.param('a')));
 marketing.get('/:a/:b', (c) => renderSlug(c, `${c.req.param('a')}/${c.req.param('b')}`));
 
-async function renderSlug(c: Context<{ Bindings: Env }>, slug: string) {
+async function renderSlug(c: Context<MarketingEnv>, slug: string) {
   const clean = slug.replace(/^\/+|\/+$/g, '');
 
   const moved = MOVED[clean];
@@ -242,9 +265,12 @@ async function renderSlug(c: Context<{ Bindings: Env }>, slug: string) {
     return c.html(renderPage(page, originOf(c.req.url)), 200, { 'Cache-Control': HTML_CACHE });
   }
 
-  // Not ours. It may be a ministry's.
-  const ministry = await renderMinistry(c, clean);
-  if (ministry) return ministry;
+  // Not ours. It may be a ministry's, at /{slug}.
+  const [orgSlug, pageSlug = 'home', ...rest] = clean.split('/');
+  if (rest.length === 0 && orgSlug && !RESERVED_SLUGS.has(orgSlug)) {
+    const ministry = await renderMinistrySite(c, orgSlug, pageSlug);
+    if (ministry) return ministry;
+  }
 
   // Neither — fall through to the Worker's notFound, which is what routes
   // /app/* to the SPA and answers everything else with a real 404.
@@ -252,19 +278,23 @@ async function renderSlug(c: Context<{ Bindings: Env }>, slug: string) {
 }
 
 /**
- * The ministry site at /{slug}.
+ * A ministry's site, by slug and page.
  *
- * Tried only after the registry misses, so Auxilium's own pages always win a
- * collision. `RESERVED_SLUGS` is checked here as well as at rename, because the
- * two guards protect against different things: the rename guard stops a
- * ministry taking `/security` today, and this stops a ministry that took a slug
- * before the marketing site had a page there from shadowing it tomorrow. The
- * cost of the extra check is one Set lookup; the cost of missing it is
- * Auxilium's own page becoming unreachable with nothing in the logs.
+ * On the shared origin this is reached only after the content registry misses,
+ * so Auxilium's own pages always win a collision, and the caller checks
+ * `RESERVED_SLUGS` first. That check exists in two places on purpose: the guard
+ * at rename stops a ministry taking `/security` today, and the guard at request
+ * stops a ministry that took a slug before the marketing site had a page there
+ * from shadowing it tomorrow.
+ *
+ * On a custom domain there is no registry to miss, so `serveMinistryDomain`
+ * calls straight in.
  */
-async function renderMinistry(c: Context<{ Bindings: Env }>, path: string) {
-  const [orgSlug, pageSlug = 'home', ...rest] = path.split('/');
-  if (!orgSlug || rest.length > 0 || RESERVED_SLUGS.has(orgSlug)) return null;
+async function renderMinistrySite(
+  c: Context<MarketingEnv>,
+  orgSlug: string,
+  pageSlug: string,
+) {
   // Shape-checked before the query so a flood of junk paths cannot turn a 404
   // into a database round trip each.
   if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(orgSlug)) return null;
@@ -280,11 +310,11 @@ async function renderMinistry(c: Context<{ Bindings: Env }>, path: string) {
   // followed a stale link is one click from what they were looking for, rather
   // than staring at Auxilium's 404 wondering whether the ministry is real.
   if (!page) {
-    return c.html(renderMinistryNotFound(toMinistrySite(site)), 404, { 'Cache-Control': 'no-store' });
+    return c.html(renderMinistryNotFound(toMinistrySite(c, site)), 404, { 'Cache-Control': 'no-store' });
   }
 
   return c.html(
-    renderMinistryPage(toMinistrySite(site), page, originOf(c.req.url)),
+    renderMinistryPage(toMinistrySite(c, site), page, originOf(c.req.url)),
     200,
     // Shorter than the marketing TTL. These pages carry a live share ratio, and
     // a stale number on a ministry's own site is the one thing this product
@@ -293,8 +323,99 @@ async function renderMinistry(c: Context<{ Bindings: Env }>, path: string) {
   );
 }
 
-function toMinistrySite(site: NonNullable<Awaited<ReturnType<typeof loadSite>>>) {
-  return { org: { name: site.org.name, slug: site.org.slug }, brand: site.brand, pages: site.pages, ctx: site.ctx };
+function toMinistrySite(
+  c: Context<MarketingEnv>,
+  site: NonNullable<Awaited<ReturnType<typeof loadSite>>>,
+) {
+  const onOwnDomain = Boolean(c.get('ministryDomain'));
+  const platform = platformOrigin(c);
+
+  return {
+    org: { name: site.org.name, slug: site.org.slug },
+    // Empty on a ministry's own domain, `/slug` on the shared origin. See the
+    // note on MinistrySite: the renderer must not guess which it is drawing.
+    base: onOwnDomain ? '' : `/${site.org.slug}`,
+    brand: site.brand,
+    pages: site.pages,
+    ctx: {
+      ...site.ctx,
+      // The application form is served by the app, which lives on the platform
+      // host. Left relative, this would take a 302 through the ministry's own
+      // domain — an extra round trip on the most important link on the site,
+      // and a moment where the address bar shows a path that is not theirs.
+      applyHref: site.ctx.applyHref && onOwnDomain
+        ? `${platform}${site.ctx.applyHref}`
+        : site.ctx.applyHref,
+    },
+    portalUrl: `${platform}/app/portal`,
+    canonicalOrigin: site.org.custom_domain ? `https://${site.org.custom_domain}` : platform,
+  };
+}
+
+/** Where the application actually lives, whatever host this request arrived on. */
+function platformOrigin(c: Context<MarketingEnv>): string {
+  const host = c.env.APP_HOST;
+  if (!host) return originOf(c.req.url);
+  return host.startsWith('localhost') || host.startsWith('127.') ? `http://${host}` : `https://${host}`;
+}
+
+/**
+ * A request that arrived on a ministry's own domain.
+ *
+ * Handled as a whole rather than by letting it fall through the marketing
+ * router, because on a custom domain the precedence inverts: `/` is the
+ * ministry's home page, not Auxilium's, and `/pricing` is the ministry's page
+ * called pricing. Falling through would serve Auxilium's marketing site under
+ * somebody else's brand.
+ *
+ * Two things it deliberately does not serve:
+ *
+ * **The application.** `/app/*` redirects to the platform host. Sessions are
+ * opaque cookies scoped to that host; serving the app on a second hostname
+ * would give a member two origins and a session on only one of them, which
+ * presents as being randomly logged out.
+ *
+ * **The API.** A redirect would silently drop the body of a POST, so this
+ * answers with a 404 that names the right host rather than a redirect that
+ * looks like it worked.
+ */
+export async function serveMinistryDomain(c: Context<MarketingEnv>, orgSlug: string) {
+  const path = new URL(c.req.url).pathname.replace(/^\/+|\/+$/g, '');
+
+  if (path === 'api' || path.startsWith('api/')) {
+    return c.json({ error: `The API is served from ${c.env.APP_HOST ?? 'the platform host'}.` }, 404);
+  }
+  if (path === 'app' || path.startsWith('app/')) {
+    // 302 rather than 301: a permanent redirect is cached by browsers
+    // indefinitely and is very hard to take back if this ever changes.
+    return c.redirect(`${platformOrigin(c)}/${path}`, 302);
+  }
+
+  if (path === 'robots.txt') {
+    return c.text(
+      ['User-agent: *', 'Allow: /', '', `Sitemap: ${originOf(c.req.url)}/sitemap.xml`, ''].join('\n'),
+      200,
+      { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': HTML_CACHE },
+    );
+  }
+
+  if (path === 'sitemap.xml') {
+    const site = await loadSite(c.env, { slug: orgSlug }, { published: true });
+    if (!site) return c.notFound();
+    const origin = originOf(c.req.url);
+    // This ministry's pages only. The platform sitemap lists every published
+    // ministry, and serving it here would publish the customer list of a
+    // product whose customers are not necessarily public about using it.
+    const urls = site.pages.map((p) => `  <url><loc>${origin}${p.slug === 'home' ? '/' : `/${p.slug}`}</loc></url>`);
+    return c.body(
+      `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`,
+      200,
+      { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': HTML_CACHE },
+    );
+  }
+
+  const rendered = await renderMinistrySite(c, orgSlug, path === '' ? 'home' : path);
+  return rendered ?? c.notFound();
 }
 
 export default marketing;

@@ -1,5 +1,6 @@
 import { esc } from './esc';
 import { brandCss, type ResolvedBrand } from '../../src/lib/brand/tokens';
+import { faviconDataUri, initials } from '../../src/lib/brand/assets';
 import {
   resolveSite, siteNav, type ResolvedBlock, type SiteContext, type SitePage,
 } from '../../src/lib/cms/blocks';
@@ -29,9 +30,32 @@ import {
 
 export interface MinistrySite {
   org: { name: string; slug: string };
+  /**
+   * What every link on the site is prefixed with: `/shelter-valley` on the
+   * shared origin, and empty string on the ministry's own domain.
+   *
+   * Passed in rather than derived from the slug, because the renderer must not
+   * have an opinion about which of the two it is drawing. The version that
+   * guessed produced a site whose every link worked on one address and
+   * double-prefixed on the other.
+   */
+  base: string;
   brand: ResolvedBrand;
   pages: SitePage[];
   ctx: SiteContext;
+  /** Absolute URL of the member portal, on the platform's own host. */
+  portalUrl: string;
+  /**
+   * The origin every canonical URL is built from — the ministry's own domain
+   * once verified, the platform otherwise.
+   *
+   * A ministry site is reachable at both addresses on purpose: taking `/{slug}`
+   * away the moment a TXT record appears would break the address while their
+   * routing record is still propagating. But two addresses serving identical
+   * pages with each claiming to be canonical is duplicate content, and the one
+   * that should win is the ministry's own name.
+   */
+  canonicalOrigin: string;
 }
 
 /**
@@ -120,17 +144,23 @@ footer.site a{color:var(--brand-muted)}
 export function renderMinistryPage(
   site: MinistrySite,
   page: SitePage,
+  /** The origin this request actually arrived on. */
   origin: string,
 ): string {
   const blocks = resolveSite(page, site.ctx);
   const nav = siteNav(site.pages);
-  const base = `/${site.org.slug}`;
+  const { base } = site;
+  const home = base || '/';
   const isHome = page.slug === 'home';
 
   // The page's own title first, the ministry second — a browser tab that reads
   // "Cedar Ridge | Cedar Ridge" on the home page is nobody's intent.
   const title = isHome ? site.org.name : `${page.title} — ${site.org.name}`;
-  const canonical = `${origin}${base}${isHome ? '' : `/${page.slug}`}`;
+  const canonical = site.canonicalOrigin === origin
+    ? `${origin}${isHome ? home : `${base}/${page.slug}`}`
+    // On the platform origin for a ministry that has its own domain, the
+    // canonical points there and carries no `/slug` prefix.
+    : `${site.canonicalOrigin}${isHome ? '/' : `/${page.slug}`}`;
 
   return `<!doctype html>
 <html lang="en">
@@ -144,14 +174,18 @@ export function renderMinistryPage(
     <meta property="og:type" content="website">
     <meta property="og:url" content="${esc(canonical)}">
     <meta name="theme-color" content="${esc(site.brand.palette.primary)}">
+    <!-- Generated from the same brand tokens as everything else, inline so it
+         costs no request. On a custom domain the browser's speculative fetch of
+         /favicon.ico would otherwise fire before anything has resolved. -->
+    <link rel="icon" href="${faviconDataUri({ brand: site.brand, name: site.org.name })}">
     <style>${brandCss(site.brand)}${STYLES}</style>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header class="site">
       <div class="wrap">
-        <a class="brandmark" href="${esc(base)}">
-          <span class="dot" aria-hidden="true">${esc(initial(site.org.name))}</span>
+        <a class="brandmark" href="${esc(home)}">
+          <span class="dot" aria-hidden="true">${esc(initials(site.org.name))}</span>
           <span>${esc(site.org.name)}</span>
         </a>
         ${
@@ -184,15 +218,15 @@ export function renderMinistryPage(
           not insurance, sharing is not guaranteed, and you remain personally responsible for your
           own medical bills.
         </p>
-        <p>Members: <a href="/app/portal">sign in to your account</a>.</p>
+        <!-- Absolute, on the platform host, because on a ministry's own domain
+             the app is not served here. Sessions are scoped to the platform
+             host by cookie; serving the portal on a second hostname would split
+             a member's session across two origins. -->
+        <p>Members: <a href="${esc(site.portalUrl)}">sign in to your account</a>.</p>
       </div>
     </footer>
   </body>
 </html>`;
-}
-
-function initial(name: string): string {
-  return (name.trim()[0] ?? 'M').toUpperCase();
 }
 
 /** The first real sentence on the page, for search results and link previews. */

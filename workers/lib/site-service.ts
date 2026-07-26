@@ -16,7 +16,11 @@ import type { SiteContext, SitePage } from '../../src/lib/cms/blocks';
  */
 
 export interface SiteRecord {
-  org: { id: string; name: string; slug: string; published_at: string | null };
+  org: {
+    id: string; name: string; slug: string; published_at: string | null;
+    /** Set only when the domain has been verified — a claim is not an address. */
+    custom_domain: string | null;
+  };
   brand: ResolvedBrand;
   pages: SitePage[];
   ctx: SiteContext;
@@ -37,13 +41,15 @@ export async function loadSite(
   const org = 'slug' in orgSlugOrId
     ? await first<OrgRow>(
         env.DB,
-        `SELECT id, name, slug, brand, site_published_at, governing_version_rule
+        `SELECT id, name, slug, brand, site_published_at, governing_version_rule,
+                custom_domain, custom_domain_verified_at
            FROM organizations WHERE slug = ? AND deleted_at IS NULL`,
         orgSlugOrId.slug,
       )
     : await first<OrgRow>(
         env.DB,
-        `SELECT id, name, slug, brand, site_published_at, governing_version_rule
+        `SELECT id, name, slug, brand, site_published_at, governing_version_rule,
+                custom_domain, custom_domain_verified_at
            FROM organizations WHERE id = ? AND deleted_at IS NULL`,
         orgSlugOrId.id,
       );
@@ -70,7 +76,13 @@ export async function loadSite(
   }));
 
   return {
-    org: { id: org.id, name: org.name, slug: org.slug, published_at: org.site_published_at },
+    org: {
+      id: org.id, name: org.name, slug: org.slug, published_at: org.site_published_at,
+      // Verified, never merely claimed. Everything downstream — canonical URLs,
+      // the sitemap, routing — treats this as the ministry's real address, and
+      // an unverified claim must not be able to reach any of them.
+      custom_domain: org.custom_domain_verified_at ? org.custom_domain : null,
+    },
     brand: resolveBrand(json<Partial<BrandIntent>>(org.brand, {})),
     pages,
     ctx: await siteContext(env, org),
@@ -84,6 +96,8 @@ interface OrgRow {
   brand: string;
   site_published_at: string | null;
   governing_version_rule: string;
+  custom_domain: string | null;
+  custom_domain_verified_at: string | null;
 }
 
 interface PageRow {

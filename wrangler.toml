@@ -81,6 +81,12 @@ enabled = true
 # Non-secret config only. Secrets go through `wrangler secret put` — never here.
 [vars]
 APP_ENV = "development"
+# The platform's own hostname. Any other Host arriving here is a candidate
+# ministry custom domain — see the check at the top of workers/index.ts. Set
+# rather than inferred, so the platform's own site can never be claimed as a
+# ministry domain and so an unrecognised host costs one indexed lookup rather
+# than a guess.
+APP_HOST = "localhost:8787"
 APP_NAME = "Auxilium"
 # Signals older than this are recomputed on read. Keeps the compass honest
 # without hammering D1 on every page load.
@@ -171,6 +177,7 @@ crons = ["0 6 1 * *"]
 
 [env.preview.vars]
 APP_ENV = "preview"
+APP_HOST = "auxilium-app-preview.jer-f84.workers.dev"
 APP_NAME = "Auxilium (Preview)"
 NRI_SIGNAL_TTL_SECONDS = "900"
 IMPORT_MAX_ROWS = "10000"
@@ -243,6 +250,7 @@ crons = ["0 6 1 * *"]
 
 [env.production.vars]
 APP_ENV = "production"
+APP_HOST = "auxilium-app.jer-f84.workers.dev"
 APP_NAME = "Auxilium"
 NRI_SIGNAL_TTL_SECONDS = "900"
 IMPORT_MAX_ROWS = "10000"

@@ -10,6 +10,7 @@ import {
   resolveBrand, BRAND_FONTS, contrast, parseHex, AA_TEXT,
   type BrandIntent,
 } from '@/lib/brand/tokens';
+import { BrandAssets } from './BrandAssets';
 
 /**
  * The brand studio.
@@ -226,7 +227,18 @@ export function BrandStudio({ canEdit }: { canEdit: boolean }) {
         )}
       </div>
 
-      <BrandPreview palette={p} wordmark={intent.wordmark} />
+      <div className="space-y-4">
+        <BrandPreview palette={p} wordmark={intent.wordmark} />
+        {/* Under the preview, not on a page of their own: these are not a
+            separate decision, they are what the colour and typeface already
+            chosen imply. Watching them change underneath a colour change is
+            the fastest way to learn nothing here has to be redone later. */}
+        <BrandAssets
+          brand={resolved}
+          name={data?.org.name ?? 'Your ministry'}
+          tagline={(data?.org.brand as { tagline?: string } | undefined)?.tagline}
+        />
+      </div>
     </div>
   );
 }

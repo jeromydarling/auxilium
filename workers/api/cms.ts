@@ -3,10 +3,12 @@ import { requireUser, requireRole, currentUser, type AppEnv } from '../lib/auth'
 import { all, first, run, json } from '../lib/db';
 import { param } from '../lib/http';
 import { audit } from '../lib/audit';
-import { newId } from '../../src/lib/ids';
+import { newId, randomSecret } from '../../src/lib/ids';
 import { nowIso } from '../../src/lib/utils';
 import { loadSite } from '../lib/site-service';
 import { defaultSite, reviewSite, slugAvailable, resolveSite, siteNav } from '../../src/lib/cms/blocks';
+import { dnsInstructions, normalizeDomain, validateDomain, verificationToken } from '../../src/lib/cms/domains';
+import { verifyDomain } from '../lib/domain-service';
 
 /**
  * The ministry site, from the staff side.
@@ -241,6 +243,113 @@ cms.patch('/site/slug', requireRole('owner'), async (c) => {
   });
 
   return c.json({ slug: clean });
+});
+
+// ── Custom domains ───────────────────────────────────────────────────────────
+
+/**
+ * The claim, the proof, and what still has to happen.
+ *
+ * Returned as one object because the three are only meaningful together: a
+ * domain with no token is a half-written row, and a verified domain whose
+ * CNAME has not been added yet is a ministry staring at their own broken site
+ * wondering what they did wrong.
+ */
+cms.get('/site/domain', async (c) => {
+  const user = (await currentUser(c))!;
+  const org = await first<{
+    custom_domain: string | null;
+    custom_domain_token: string | null;
+    custom_domain_verified_at: string | null;
+    custom_domain_checked_at: string | null;
+  }>(
+    c.env.DB,
+    `SELECT custom_domain, custom_domain_token, custom_domain_verified_at, custom_domain_checked_at
+       FROM organizations WHERE id = ?`,
+    user.org_id,
+  );
+
+  if (!org?.custom_domain || !org.custom_domain_token) {
+    return c.json({ domain: null, platform_host: c.env.APP_HOST ?? null });
+  }
+
+  return c.json({
+    domain: org.custom_domain,
+    verified_at: org.custom_domain_verified_at,
+    checked_at: org.custom_domain_checked_at,
+    platform_host: c.env.APP_HOST ?? null,
+    dns: dnsInstructions(org.custom_domain, org.custom_domain_token, c.env.APP_HOST ?? ''),
+  });
+});
+
+cms.put('/site/domain', requireRole('owner'), async (c) => {
+  const user = (await currentUser(c))!;
+  const { domain } = await c.req.json<{ domain?: string }>();
+
+  const check = validateDomain(domain ?? '');
+  if (!check.ok) return c.json({ error: check.reason }, 400);
+
+  const clean = normalizeDomain(domain!);
+  const token = verificationToken(randomSecret);
+
+  try {
+    await run(
+      c.env.DB,
+      `UPDATE organizations
+          SET custom_domain = ?, custom_domain_token = ?,
+              custom_domain_verified_at = NULL, custom_domain_checked_at = NULL,
+              updated_at = ?
+        WHERE id = ?`,
+      // Verification is cleared, always. It is a statement about one hostname,
+      // and carrying it across a change would leave a domain verified that
+      // nobody ever checked.
+      clean, token, nowIso(), user.org_id,
+    );
+  } catch {
+    return c.json({ error: 'Another ministry has already claimed that domain.' }, 409);
+  }
+
+  await audit(c.env.DB, {
+    orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'cms.domain_claimed',
+    subjectType: 'organization', subjectId: user.org_id, meta: { domain: clean },
+  });
+
+  return c.json({
+    domain: clean,
+    verified_at: null,
+    platform_host: c.env.APP_HOST ?? null,
+    dns: dnsInstructions(clean, token, c.env.APP_HOST ?? ''),
+  });
+});
+
+cms.post('/site/domain/verify', requireRole('owner', 'admin'), async (c) => {
+  const user = (await currentUser(c))!;
+  const status = await verifyDomain(c.env, user.org_id);
+
+  if (status.verified_at) {
+    await audit(c.env.DB, {
+      orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'cms.domain_verified',
+      subjectType: 'organization', subjectId: user.org_id, meta: { domain: status.domain },
+    });
+  }
+  return c.json(status);
+});
+
+cms.delete('/site/domain', requireRole('owner'), async (c) => {
+  const user = (await currentUser(c))!;
+  await run(
+    c.env.DB,
+    `UPDATE organizations
+        SET custom_domain = NULL, custom_domain_token = NULL,
+            custom_domain_verified_at = NULL, custom_domain_checked_at = NULL, updated_at = ?
+      WHERE id = ?`,
+    nowIso(), user.org_id,
+  );
+  await audit(c.env.DB, {
+    orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'cms.domain_released',
+    subjectType: 'organization', subjectId: user.org_id,
+  });
+  return c.json({ domain: null });
 });
 
 // ── Pages ────────────────────────────────────────────────────────────────────

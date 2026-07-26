@@ -18,6 +18,14 @@ export interface Env {
   // Non-secret vars
   APP_ENV: 'development' | 'preview' | 'production';
   APP_NAME: string;
+  /**
+   * The platform's own hostname. Anything else arriving on a Host header is a
+   * candidate custom domain — which is why this is configured rather than
+   * inferred: guessing from the request would make every request to an
+   * unrecognised host a database lookup, and would make the *platform's* own
+   * site resolvable as a ministry the moment somebody claimed the hostname.
+   */
+  APP_HOST?: string;
   NRI_SIGNAL_TTL_SECONDS: string;
   IMPORT_MAX_ROWS: string;
 

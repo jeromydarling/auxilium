@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 478 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 507 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -236,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-478 tests over the logic that carries the risk: NRI scoring, integrity and
+507 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -755,8 +755,25 @@ production is a lie that gets discovered by a member. And it previews a member
 surface — a bill, a due date, a button — rather than swatches, because a row of
 colour chips tells a ministry nothing about whether their brand works.
 
-**Still to build:** custom domains and the asset generator. The token layer is
-the foundation both sit on.
+### The generated assets
+
+`src/lib/brand/assets.ts`, shown under the studio preview. A ministry that has
+picked a colour and a typeface has already specified everything an identity
+needs; what it does not have is the six files somebody will ask it for in the
+first fortnight. Generated from the same `ResolvedBrand`, so they cannot end up
+disagreeing with the site — which is the whole argument for generating them
+rather than accepting an upload.
+
+**A monogram, never a symbol.** A generated cross, heart, or clasped hands is a
+claim about what a ministry *is* that we are not in a position to make, and the
+generic ones look worse than initials at every size. The initials skip the words
+the whole category shares, so "The Good Shepherd" reads GS rather than TG.
+
+**Everything is SVG**, which is sharp at 16px and at print size and costs
+nothing to store. The one place that is not enough is a link preview — Facebook,
+LinkedIn, and most email clients will not render one — and that is stated next
+to those two downloads rather than in documentation, because a ministry that
+uploads an SVG and gets a blank preview will not connect it to a footnote.
 
 ---
 
@@ -830,6 +847,57 @@ JavaScript is stricter here than on the marketing site: there is none. Exactly
 one `h1` per page — the first block's heading — because a page whose every
 section is an `h1` is the most common way a block editor produces something a
 screen reader cannot be navigated by.
+
+### Custom domains
+
+`/{slug}` is the default and needs no DNS, no certificate, and no explanation.
+A custom domain is the upgrade.
+
+| | |
+|---|---|
+| `src/lib/cms/domains.ts` | Normalizing, validating, the DNS instructions. Pure. |
+| `workers/lib/domain-service.ts` | DNS-over-HTTPS verification, host → ministry |
+| `src/features/cms/DomainSettings.tsx` | The setup panel |
+| `schema/migrations/0012_custom_domains.sql` | Token, verified-at, checked-at |
+
+**Routing reads `custom_domain_verified_at`, never `custom_domain`.** A row is a
+claim; serving on the strength of a claim would let anybody who can type into
+the box have their content served under a hostname they do not control. Nothing
+happens until a TXT record only the owner could publish has been seen.
+
+**The host check sits ahead of the API and the marketing router**, because on a
+custom domain the precedence inverts: `/` is the ministry's home page and
+`/pricing` is the ministry's page called pricing. Falling through would serve
+Auxilium's marketing site under somebody else's brand and, at `/sitemap.xml`,
+hand out a list of every other ministry using the product.
+
+**The app and the API are not served there.** `/app/*` redirects to the platform
+host and `/api/*` answers 404 naming it — a redirect would silently drop the
+body of a POST. Sessions are cookies scoped to the platform host, and serving
+the app on a second hostname would give a member two origins and a session on
+only one, which presents as being randomly logged out.
+
+**Verification asks two resolvers from two providers**, and either seeing the
+record is proof — the record is public by construction. A ministry that has just
+changed nameservers is often visible to one cache and not the other for an hour,
+and a check that fails in that window sends somebody back to "fix" a record that
+was already correct. A resolver failure is logged even though the API cannot
+distinguish it, because otherwise an outage in verification presents as every
+ministry suddenly being bad at DNS.
+
+**Verification never reverses.** `COALESCE` keeps the first success: a later
+check that cannot see the record must not take a live website down over a
+transient lookup.
+
+**Both addresses keep working, and only one is canonical.** Removing `/{slug}`
+the moment a TXT record appears would break it while the routing record is still
+propagating. So both answer, both declare the ministry's own domain as canonical,
+and the sitemap lists that one.
+
+**The instructions name the TXT record first and say why.** A ministry that adds
+the routing record first points its *live* website at a Worker not yet serving
+it, taking their existing site down while they wait. That is the most damaging
+mistake available here and it is entirely avoidable by ordering two paragraphs.
 
 **Reserved slugs are checked twice**, at rename and at request. The two guards
 protect against different things: the rename guard stops a ministry taking
@@ -1259,10 +1327,16 @@ weights so the worst case is distinguishable from the merely urgent.
 A daily digest of urgent members, with one-click unsubscribe, is the highest-value
 addition — most missed follow-ups happen because nobody opened the dashboard.
 
-**Custom domains.** `organizations.custom_domain` exists with a unique index
-and nothing reads it yet. Cloudflare for SaaS is the mechanism; the routing seam
-is `renderMinistry`, which currently resolves a ministry from the first path
-segment and would resolve it from the `Host` header instead.
+**Cloudflare for SaaS hostnames.** Domain verification and host-based routing
+are done; what is not is provisioning the TLS certificate. Until a custom
+hostname is attached in Cloudflare, a verified domain pointed here gets a
+certificate error rather than the ministry's site. That is an account-level
+setup step, not code.
+
+**PNG export for the generated assets.** The link preview and email header are
+SVG, which Facebook, LinkedIn, and most email clients will not render. The
+caveat is stated at the download; rasterizing needs a renderer the Worker does
+not have.
 
 **Team invites.** `admin/users` creates users with a password; a tokened invite
 where the invitee sets their own is the right pattern.

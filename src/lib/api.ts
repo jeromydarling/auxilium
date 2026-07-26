@@ -266,6 +266,11 @@ export const api = {
     checkSlug: (slug: string) => get<{ ok: boolean; reason?: string }>(`/cms/site/slug/${slug}`),
     setSlug: (slug: string) => patch<{ slug: string }>('/cms/site/slug', { slug }),
 
+    domain: () => get<DomainView>('/cms/site/domain'),
+    claimDomain: (domain: string) => put<DomainView>('/cms/site/domain', { domain }),
+    verifyDomain: () => post<DomainView & { found?: string[] }>('/cms/site/domain/verify', {}),
+    releaseDomain: () => del<{ domain: null }>('/cms/site/domain'),
+
     pages: () => get<{ items: CmsPageSummary[] }>('/cms/pages'),
     page: (id: string) => get<{ page: CmsPageRecord }>(`/cms/pages/${id}`),
     createPage: (body: Record<string, unknown>) => post<{ id: string; slug: string }>('/cms/pages', body),
@@ -591,6 +596,18 @@ export interface CmsPageRecord extends CmsPageSummary {
  * one the renderer uses, and the symptom would be a preview that does not match
  * the published page — the exact failure the whole design is arranged to avoid.
  */
+export interface DomainView {
+  domain: string | null;
+  verified_at?: string | null;
+  checked_at?: string | null;
+  platform_host: string | null;
+  dns?: {
+    verify: { type: string; name: string; value: string; why: string };
+    route: { type: string; name: string; value: string; why: string };
+    apex: boolean;
+  };
+}
+
 export interface SiteView {
   org: { name: string; slug: string };
   published_at: string | null;

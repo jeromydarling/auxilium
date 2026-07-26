@@ -13,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { PageHeader } from '@/app/AppShell';
 import { newBlock, isLive, type Block, type BlockType, type SitePage } from '@/lib/cms/blocks';
 import { brandCss } from '@/lib/brand/tokens';
+import { DomainSettings } from './DomainSettings';
 
 /**
  * The site builder.
@@ -273,6 +274,7 @@ function PageList({
       </form>
 
       <Address site={site} onAct={onAct} busy={busy} />
+      <DomainSettings />
     </div>
   );
 }

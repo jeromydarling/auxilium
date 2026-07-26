@@ -19,7 +19,9 @@ import knowledgeRoutes from './api/knowledge';
 import memberAuthRoutes from './api/member-auth';
 import applicationRoutes, { publicApplications } from './api/applications';
 import stripeWebhookRoutes from './api/stripe-webhook';
-import marketingRoutes from './marketing';
+import marketingRoutes, { serveMinistryDomain } from './marketing';
+import { orgByHost } from './lib/domain-service';
+import { normalizeDomain } from '../src/lib/cms/domains';
 import { renderNotFound } from './marketing/render';
 import { closeAllDuePeriods } from './lib/billing-service';
 import { handleImportBatch } from './queues/imports';
@@ -38,6 +40,36 @@ import { handleSignalBatch } from './queues/signals';
  */
 
 const app = new Hono<AppEnv>();
+
+/**
+ * Custom domains, checked before anything else.
+ *
+ * A request that arrived on a ministry's own verified domain is that ministry's
+ * site and nothing else. This sits ahead of the API and the marketing router
+ * rather than inside them, because on a custom domain the precedence inverts:
+ * `/` is the ministry's home page, and `/pricing` is the ministry's page called
+ * pricing. Letting such a request fall through would serve Auxilium's marketing
+ * site under somebody else's brand and, at `/sitemap.xml`, hand out a list of
+ * every other ministry using the product.
+ *
+ * The cost when `APP_HOST` matches — the overwhelmingly common case — is one
+ * string comparison and no database work at all. An unrecognised host costs one
+ * indexed lookup and then behaves exactly as the platform, which is the right
+ * answer for a preview URL, a health-check probe, or a stale DNS record
+ * pointing here from a domain nobody has claimed.
+ */
+app.use('*', async (c, next) => {
+  const appHost = c.env.APP_HOST ? normalizeDomain(c.env.APP_HOST) : null;
+  const host = normalizeDomain(c.req.header('host') ?? '');
+
+  if (!appHost || !host || host === appHost) return next();
+
+  const org = await orgByHost(c.env, host);
+  if (!org) return next();
+
+  c.set('ministryDomain', org.slug);
+  return serveMinistryDomain(c, org.slug);
+});
 
 /**
  * Health check. Reports whether each binding actually answers, not merely

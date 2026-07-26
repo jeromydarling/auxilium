@@ -65,6 +65,18 @@ export function newId(kind: IdKind): string {
   return `${PREFIXES[kind]}_${randomToken()}`;
 }
 
+/**
+ * A bare random token, with no prefix and no meaning.
+ *
+ * For the few values that are secrets rather than identifiers — the DNS
+ * verification token, for one. A prefixed id would advertise what it is and,
+ * worse, invite somebody to reconstruct it: a token anybody can derive proves
+ * only that they read the documentation.
+ */
+export function randomSecret(length = 24): string {
+  return randomToken(length);
+}
+
 /** True if `id` looks like an ID of `kind`. Cheap guard at trust boundaries. */
 export function isId(kind: IdKind, id: unknown): id is string {
   return typeof id === 'string' && id.startsWith(`${PREFIXES[kind]}_`);

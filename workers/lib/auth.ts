@@ -46,7 +46,7 @@ export interface AuthUser {
  * the bindings and the memoized user. Declaring it once removes the casts that
  * would otherwise appear in every single route handler.
  */
-export type AppEnv = { Bindings: Env; Variables: { user: AuthUser; member: AuthMember } };
+export type AppEnv = { Bindings: Env; Variables: { user: AuthUser; member: AuthMember; ministryDomain?: string } };
 export type AppContext = Context<AppEnv>;
 
 // ── Password hashing ─────────────────────────────────────────────────────────
