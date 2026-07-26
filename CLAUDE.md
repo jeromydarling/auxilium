@@ -466,6 +466,50 @@ any organization a reader might be evaluating.
 
 ---
 
+## Deploying
+
+**Two things deploy this repo, and they produce two different live Workers.**
+That is surprising enough to state plainly.
+
+| Worker | Deployed by | Config used | Data plane |
+|---|---|---|---|
+| `auxilium-app` | GitHub Actions on push to `main` | `--env production` | **production** D1/R2/KV |
+| `auxilium` | Cloudflare Workers Builds, connected to this repo | top level, no `--env` | **dev** D1/R2/KV |
+
+Both are publicly reachable on `*.jer-f84.workers.dev`. Production is
+`https://auxilium-app.jer-f84.workers.dev`.
+
+Two consequences worth holding onto:
+
+- **`wrangler deploy` builds its own assets.** `[build] command` in
+  `wrangler.toml` exists because a deploy no longer always starts from
+  `package.json`, where the scripts chain `bun run build &&`. A bare
+  `wrangler deploy` without it ships a Worker whose `[assets]` directory is
+  missing — the marketing pages still render, because the Worker generates
+  those itself, so it looks like a working site while every `/app/*` route and
+  every bundle 404s.
+
+- **Queues are per-environment.** A Cloudflare queue has exactly one consumer.
+  Sharing one set across environments meant whichever Worker deployed last
+  owned the consumer slot while the others stayed producers — so a production
+  import could be consumed by the dev-bound Worker and committed to the dev
+  database, hanging forever and landing the rows in the wrong place with no
+  error raised. Production uses `auxilium-imports-prod` / `auxilium-signals-prod`.
+  `workers/index.ts` strips the environment suffix before dispatching, and
+  deliberately does not match `-dlq`.
+
+The CI pipeline gates on typecheck, lint, tests, and build, applies migrations
+before deploying, and then fetches `/api/health` on the URL the deploy actually
+printed. That last step used to derive a hostname, fail to find one, and exit 0
+with a warning — reporting green without checking anything. If it cannot
+determine where it deployed, it now fails.
+
+**The `auxilium` Worker serves the whole public site bound to the dev
+database.** If that is not wanted, disconnect Workers Builds in the Cloudflare
+dashboard, or point its deploy command at `--env production`.
+
+---
+
 ## Recommended next work
 
 Roughly in order of value.
