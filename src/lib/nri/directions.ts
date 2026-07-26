@@ -1,7 +1,7 @@
 /**
  * The NRI compass — four directions, fixed.
  *
- * NRI is Need Response Intelligence: the layer that decides who the ministry
+ * NRI is Narrative Relational Intelligence: the layer that decides who the ministry
  * should look at next, and can always say why. The compass is the vocabulary
  * staff use out loud, so the four names are Latin, short, and don't collide
  * with ordinary English words in a search box.

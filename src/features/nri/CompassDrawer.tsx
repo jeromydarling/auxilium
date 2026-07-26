@@ -76,7 +76,7 @@ function CompassPanel({ onClose }: { onClose: () => void }) {
         <header className="flex items-start justify-between border-b p-4">
           <div>
             <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              <Compass className="h-4 w-4" /> Need Response Intelligence
+              <Compass className="h-4 w-4" /> Narrative Relational Intelligence
             </h2>
             <p className="mt-1 text-lg font-semibold">{posture.label} posture</p>
             <p className="text-sm text-muted-foreground">{posture.description}</p>

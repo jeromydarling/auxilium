@@ -8,7 +8,7 @@ fail in a specific way: a family in crisis goes quiet, a case stalls in someone'
 inbox, a promised follow-up never happens, and nobody notices until the member
 leaves.
 
-**NRI — Need Response Intelligence — exists to notice.** It scores every member
+**NRI — Narrative Relational Intelligence — exists to notice.** It scores every member
 on four directions, and it can always say exactly why.
 
 | | |

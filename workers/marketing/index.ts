@@ -116,7 +116,7 @@ solvency requirements and any statutory obligation to pay a claim on a timetable
   and so do claims nobody has opened yet, before their deadline.
 - **Reference-based repricing.** Reprices facility claims against the Medicare
   allowable rather than chargemaster rates.
-- **Need Response Intelligence (NRI).** Scores members on four directions — Cura
+- **Narrative Relational Intelligence (NRI).** Scores members on four directions — Cura
   (care), Onus (case weight and handling), Familia (household complexity), and
   Fides (engagement) — to surface members at risk of being missed.
 - **Roster import.** Column inference, validation, and duplicate detection for
@@ -145,7 +145,7 @@ same result.
 
 - [Claims integrity](${origin}/claims-integrity): the share ratio, guideline
   consistency, claim turnaround, and repricing.
-- [Need Response Intelligence](${origin}/need-response-intelligence): the four
+- [Narrative Relational Intelligence](${origin}/narrative-relational-intelligence): the four
   directions and the explainable scoring model.
 - [How it works](${origin}/how-it-works): what a ministry puts in and what comes out.
 
@@ -179,11 +179,27 @@ reproducing documented failure patterns, for comparison.
  * path segments — which is every slug the registry contains, and keeps this
  * from swallowing paths it should not.
  */
+/**
+ * Permanent redirects for slugs that have moved.
+ *
+ * A renamed page is still a page someone bookmarked, linked, or indexed.
+ * Answering those with a 404 throws away the link and tells a crawler the
+ * content is gone rather than moved, so every rename lands here on the way out.
+ */
+const MOVED: Record<string, string> = {
+  // NRI was published briefly as "Need Response Intelligence" before the name
+  // was settled as Narrative Relational Intelligence.
+  'need-response-intelligence': '/narrative-relational-intelligence',
+};
+
 marketing.get('/', (c) => renderSlug(c, ''));
 marketing.get('/:a', (c) => renderSlug(c, c.req.param('a')));
 marketing.get('/:a/:b', (c) => renderSlug(c, `${c.req.param('a')}/${c.req.param('b')}`));
 
 function renderSlug(c: Context<{ Bindings: Env }>, slug: string) {
+  const moved = MOVED[slug.replace(/^\/+|\/+$/g, '')];
+  if (moved) return c.redirect(moved, 301);
+
   const page = pageBySlug(slug);
   // Not a registered page — fall through to the Worker's notFound, which is
   // what routes /app/* to the SPA.

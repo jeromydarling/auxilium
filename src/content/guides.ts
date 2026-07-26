@@ -337,7 +337,7 @@ const explainableScoring: MarketingPage = {
         'their approach has no downside is selling something.',
     },
   ],
-  related: ['need-response-intelligence', 'guides/how-integrity-scoring-works'],
+  related: ['narrative-relational-intelligence', 'guides/how-integrity-scoring-works'],
 };
 
 const csvImport: MarketingPage = {
@@ -504,7 +504,7 @@ const claimsThatStall: MarketingPage = {
       ],
     },
   ],
-  related: ['claims-integrity', 'need-response-intelligence'],
+  related: ['claims-integrity', 'narrative-relational-intelligence'],
 };
 
 export const GUIDES: MarketingPage[] = [

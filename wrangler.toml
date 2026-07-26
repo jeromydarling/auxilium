@@ -44,6 +44,18 @@ compatibility_flags = ["nodejs_compat"]
 [build]
 command = "bun run build"
 
+# ── Cron ─────────────────────────────────────────────────────────────────────
+# The monthly billing close: calculate and invoice the platform fee for the
+# month that just ended.
+#
+# 06:00 UTC on the 1st rather than midnight, deliberately. Card settlement is
+# not instantaneous, and closing a month the second it ends invoices before the
+# last of its money has landed. The close is idempotent and refuses to close a
+# period that has not ended, so a retried or double-fired trigger cannot
+# double-bill.
+[triggers]
+crons = ["0 6 1 * *"]
+
 # Smart Placement moves the Worker close to D1 rather than to the eyeball.
 # Auxilium is read-heavy against D1 on nearly every route, so this is the right
 # default. Remove it if you later add latency-sensitive edge-only paths.
@@ -154,6 +166,9 @@ run_worker_first = true
 [env.preview.observability]
 enabled = true
 
+[env.preview.triggers]
+crons = ["0 6 1 * *"]
+
 [env.preview.vars]
 APP_ENV = "preview"
 APP_NAME = "Auxilium (Preview)"
@@ -222,6 +237,9 @@ run_worker_first = true
 
 [env.production.observability]
 enabled = true
+
+[env.production.triggers]
+crons = ["0 6 1 * *"]
 
 [env.production.vars]
 APP_ENV = "production"

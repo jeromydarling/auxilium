@@ -179,7 +179,7 @@ const home: MarketingPage = {
     },
     {
       type: 'split',
-      eyebrow: 'Need Response Intelligence',
+      eyebrow: 'Narrative Relational Intelligence',
       heading: 'A score you can add up by hand, and argue with',
       paragraphs: [
         'Four directions, scored separately, because a member can carry several at once. High ' +
@@ -195,7 +195,7 @@ const home: MarketingPage = {
       ],
       mockup: 'compass',
       flip: true,
-      cta: { label: 'How the scoring works', href: '/need-response-intelligence' },
+      cta: { label: 'How the scoring works', href: '/narrative-relational-intelligence' },
     },
     {
       type: 'steps',
@@ -256,7 +256,7 @@ const home: MarketingPage = {
         'it every morning.',
       features: [
         {
-          title: 'Need Response Intelligence',
+          title: 'Narrative Relational Intelligence',
           body:
             'Every member is scored on four directions — care, case weight, household complexity, ' +
             'and whether you are still in touch. Every score is a sum of named, weighted reasons. ' +
@@ -293,7 +293,7 @@ const home: MarketingPage = {
       secondaryCta: { label: 'Read how the scoring works', href: '/guides/how-integrity-scoring-works' },
     },
   ],
-  related: ['claims-integrity', 'need-response-intelligence', 'guides'],
+  related: ['claims-integrity', 'narrative-relational-intelligence', 'guides'],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -478,7 +478,7 @@ const claimsIntegrity: MarketingPage = {
       cta: { label: 'Open the demo', href: '/app/login' },
     },
   ],
-  related: ['need-response-intelligence', 'guides/how-integrity-scoring-works', 'guides/share-ratio-explained'],
+  related: ['narrative-relational-intelligence', 'guides/how-integrity-scoring-works', 'guides/share-ratio-explained'],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -486,9 +486,9 @@ const claimsIntegrity: MarketingPage = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const nri: MarketingPage = {
-  slug: 'need-response-intelligence',
+  slug: 'narrative-relational-intelligence',
   kind: 'feature',
-  title: 'Need Response Intelligence — Auxilium',
+  title: 'Narrative Relational Intelligence — Auxilium',
   h1: 'Make sure nobody is missed',
   description:
     'NRI scores every member on four directions — care, case weight, household complexity, and ' +
@@ -498,13 +498,36 @@ const nri: MarketingPage = {
   blocks: [
     {
       type: 'hero',
-      kicker: 'Need Response Intelligence',
+      kicker: 'Narrative Relational Intelligence',
       heading: 'Make sure nobody is missed',
       subheading:
         'Ministries fail members in a specific way: a family goes quiet, a case stalls in ' +
         'somebody\'s inbox, a promised follow-up never happens, and nobody notices until they ' +
         'leave. NRI notices.',
       cta: { label: 'See the command center', href: '/app/login' },
+      mockup: 'compass',
+    },
+    {
+      type: 'prose',
+      heading: 'Why "narrative relational"',
+      paragraphs: [
+        'Because those are the two things a spreadsheet cannot hold. A row tells you what a ' +
+        'member\'s balance is today. It does not tell you the story that balance sits inside — ' +
+        'that this household had a baby in March, a hospitalization in June, and has not replied ' +
+        'to anyone since. Read as separate facts, none of those is alarming. Read as a narrative, ' +
+        'it is the most important thing on your desk this morning.',
+
+        'And relational, because a ministry is not a claims processor with a warmer font. What is ' +
+        'actually being tracked is the state of a relationship: whether it is being tended, ' +
+        'whether it has gone quiet, whether a promise made in one conversation was kept in the ' +
+        'next. Silence is the signal that matters most, and it is precisely the one that looks ' +
+        'like nothing in a database.',
+
+        'So NRI reads the sequence rather than the snapshot, and it scores the relationship ' +
+        'rather than the invoice. What it produces is not a risk score. It is a short answer to ' +
+        'the question a staff member actually opens the software asking: who should I call today, ' +
+        'and why them.',
+      ],
     },
     {
       type: 'featureList',

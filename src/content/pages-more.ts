@@ -82,7 +82,7 @@ const features: MarketingPage = {
       secondaryCta: { label: 'Read the guides', href: '/guides' },
     },
   ],
-  related: ['claims-integrity', 'need-response-intelligence', 'how-it-works', 'pricing'],
+  related: ['claims-integrity', 'narrative-relational-intelligence', 'how-it-works', 'pricing'],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -357,7 +357,7 @@ const whoItsFor: MarketingPage = {
         'Today’s nudges, rather than a dashboard you must interpret',
       ],
       mockup: 'triage',
-      cta: { label: 'How the scoring works', href: '/need-response-intelligence' },
+      cta: { label: 'How the scoring works', href: '/narrative-relational-intelligence' },
     },
     {
       type: 'split',
@@ -407,7 +407,7 @@ const whoItsFor: MarketingPage = {
       secondaryCta: { label: 'See every feature', href: '/features' },
     },
   ],
-  related: ['features', 'claims-integrity', 'need-response-intelligence'],
+  related: ['features', 'claims-integrity', 'narrative-relational-intelligence'],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

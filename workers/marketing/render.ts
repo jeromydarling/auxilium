@@ -476,7 +476,7 @@ function titleize(slug: string): string {
 const NAV = [
   { href: '/features', label: 'Features' },
   { href: '/claims-integrity', label: 'Claims integrity' },
-  { href: '/need-response-intelligence', label: 'NRI' },
+  { href: '/narrative-relational-intelligence', label: 'NRI' },
   { href: '/how-it-works', label: 'How it works' },
   { href: '/pricing', label: 'Pricing' },
   { href: '/guides', label: 'Guides' },
@@ -544,7 +544,7 @@ function renderFooter(): string {
         <ul>
           <li><a href="/features">Features</a></li>
           <li><a href="/claims-integrity">Claims integrity</a></li>
-          <li><a href="/need-response-intelligence">Need Response Intelligence</a></li>
+          <li><a href="/narrative-relational-intelligence">Narrative Relational Intelligence</a></li>
           <li><a href="/how-it-works">How it works</a></li>
           <li><a href="/pricing">Pricing</a></li>
         </ul>

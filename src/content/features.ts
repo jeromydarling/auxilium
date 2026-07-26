@@ -20,7 +20,7 @@
 export type FeatureCategory =
   | 'Members & households'
   | 'Roster import'
-  | 'Need Response Intelligence'
+  | 'Narrative Relational Intelligence'
   | 'Claims'
   | 'Financial integrity'
   | 'Care & prayer'
@@ -36,7 +36,7 @@ export interface FeatureEntry {
 }
 
 export const FEATURE_CATEGORIES: FeatureCategory[] = [
-  'Need Response Intelligence',
+  'Narrative Relational Intelligence',
   'Financial integrity',
   'Claims',
   'Roster import',
@@ -53,7 +53,7 @@ export const FEATURES: FeatureEntry[] = [
       'Cura, Onus, Familia, and Fides scored separately, because a member can carry several at ' +
       'once. High Onus with low Cura is a billing problem. High Onus and high Cura is a family ' +
       'in crisis, and the difference should be visible at a glance.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['scoring', 'triage', 'core'],
     status: 'shipped',
   },
@@ -64,7 +64,7 @@ export const FEATURES: FeatureEntry[] = [
       'no learned coefficient. The reasons appear beside the number with their exact weights, so ' +
       'a staff member who distrusts a score can check it and either agree or point at the rule ' +
       'they disagree with.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['explainability', 'scoring', 'trust'],
     status: 'shipped',
   },
@@ -73,7 +73,7 @@ export const FEATURES: FeatureEntry[] = [
     body:
       'Every rule, its weight, and its rationale are published to administrators. A system that ' +
       'cannot be argued with does not get trusted with pastoral care.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['explainability', 'admin', 'trust'],
     status: 'shipped',
   },
@@ -83,7 +83,7 @@ export const FEATURES: FeatureEntry[] = [
       'Clear, watch, attend, urgent. The board ranks by band and then by direction, and ties ' +
       'break toward Cura — when scores are equal the hurting person outranks the expensive case. ' +
       'That is a moral choice written into the code, not an accident of sorting.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['triage', 'scoring'],
     status: 'shipped',
   },
@@ -94,7 +94,7 @@ export const FEATURES: FeatureEntry[] = [
       'member again". It returns when the facts get materially worse — a higher band, or a ' +
       '15-point jump. Someone who dismissed "member is quiet" should absolutely be shown ' +
       '"member is quiet and now hospitalized".',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['workflow', 'triage'],
     status: 'shipped',
   },
@@ -104,7 +104,7 @@ export const FEATURES: FeatureEntry[] = [
       'Size, dependents, caregiving, and recent change are properties of a household, so they ' +
       'score on the primary contact rather than on every member. Scoring them per-person put ' +
       'eight rows on the board for one family and ranked nothing.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['households', 'scoring'],
     status: 'shipped',
   },
@@ -114,7 +114,7 @@ export const FEATURES: FeatureEntry[] = [
       'The compass may open itself at most once per calendar day, and only behind a ' +
       'high-confidence action. Software that pops open for routine work gets closed reflexively ' +
       '— and is then closed reflexively on the morning a member is in an ICU.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['ux', 'workflow'],
     status: 'shipped',
   },
@@ -123,7 +123,7 @@ export const FEATURES: FeatureEntry[] = [
     body:
       'Dismissals, cooldowns, and orientation progress live in the database rather than in one ' +
       'browser, so what a staff member handled at the office is still handled at home.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['workflow', 'sync'],
     status: 'shipped',
   },
@@ -133,7 +133,7 @@ export const FEATURES: FeatureEntry[] = [
       'Scoring runs from a queue with no request context, against the same pure rules the tests ' +
       'exercise. Given the same facts and the same timestamp the output is byte-identical, ' +
       'forever.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['architecture', 'scoring'],
     status: 'shipped',
   },
@@ -142,7 +142,7 @@ export const FEATURES: FeatureEntry[] = [
     body:
       'Scoring the household directly, rather than through the primary-contact proxy, so the ' +
       'board can show a family as one row with its members underneath.',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['households', 'scoring'],
     status: 'planned',
   },
@@ -151,7 +151,7 @@ export const FEATURES: FeatureEntry[] = [
     body:
       'Signals are a point-in-time reading today. Retaining them would answer the question a ' +
       'director actually has: is this ministry getting better at follow-up?',
-    category: 'Need Response Intelligence',
+    category: 'Narrative Relational Intelligence',
     tags: ['reporting', 'scoring'],
     status: 'planned',
   },

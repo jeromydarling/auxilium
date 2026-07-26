@@ -13,8 +13,11 @@ import adminRoutes from './api/admin';
 import cmsRoutes from './api/cms';
 import integrityRoutes from './api/integrity';
 import claimsRoutes from './api/claims';
+import billingRoutes from './api/billing';
+import stripeWebhookRoutes from './api/stripe-webhook';
 import marketingRoutes from './marketing';
 import { renderNotFound } from './marketing/render';
+import { closeAllDuePeriods } from './lib/billing-service';
 import { handleImportBatch } from './queues/imports';
 import { handleSignalBatch } from './queues/signals';
 
@@ -75,6 +78,15 @@ app.get('/api/health', async (c) => {
   checks.queue_imports = c.env.IMPORT_QUEUE ? 'bound' : 'missing';
   checks.queue_signals = c.env.SIGNAL_QUEUE ? 'bound' : 'missing';
 
+  // Billing is optional. Reported as three states rather than two, because
+  // "key present, webhook secret missing" is a real and confusing
+  // configuration: payments would be taken and never recorded.
+  checks.billing = !c.env.STRIPE_SECRET_KEY
+    ? 'not configured'
+    : c.env.STRIPE_WEBHOOK_SECRET
+      ? 'ok'
+      : 'partial — STRIPE_WEBHOOK_SECRET is unset, so settled payments will not be recorded';
+
   const healthy = checks.d1 === 'ok';
 
   return c.json(
@@ -100,6 +112,16 @@ app.route('/api/admin', adminRoutes);
 app.route('/api/cms', cmsRoutes);
 app.route('/api/integrity', integrityRoutes);
 app.route('/api/claims', claimsRoutes);
+app.route('/api/billing', billingRoutes);
+
+/**
+ * The Stripe webhook, mounted outside the authenticated routes on purpose.
+ *
+ * It authenticates by signature rather than by session — Stripe has no cookie —
+ * so it must not sit behind requireUser. See the file for why it verifies
+ * before parsing and why an unknown event type still returns 200.
+ */
+app.route('/api/stripe/webhook', stripeWebhookRoutes);
 
 /**
  * Public marketing owns the site root; the application lives under /app.
@@ -158,6 +180,33 @@ app.onError((error, c) => {
  */
 export default {
   fetch: app.fetch,
+
+  /**
+   * The monthly close.
+   *
+   * Runs on the 1st and calculates the platform fee for the month that just
+   * ended, for every organization. Deliberately scheduled a few hours into the
+   * day rather than at midnight: card settlement is not instantaneous, and
+   * closing a month the second it ends invoices before the last of its money
+   * has landed.
+   *
+   * `closePeriod` is idempotent and refuses to close a period that has not
+   * ended, so a retried or double-fired cron cannot double-bill.
+   */
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      (async () => {
+        const now = new Date(event.scheduledTime);
+        const results = await closeAllDuePeriods(env, now);
+        const invoiced = results.filter((r) => r.status === 'invoiced').length;
+        const failed = results.filter((r) => r.status === 'failed').length;
+        console.log(
+          `[billing] monthly close: ${results.length} organizations, ` +
+            `${invoiced} invoiced, ${failed} failed`,
+        );
+      })(),
+    );
+  },
 
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
     // Queues are per-environment (auxilium-imports, auxilium-imports-prod), so

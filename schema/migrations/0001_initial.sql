@@ -296,7 +296,7 @@ CREATE INDEX idx_prayer_org_status ON prayer_requests(org_id, status, deleted_at
 CREATE INDEX idx_prayer_member ON prayer_requests(member_id);
 CREATE INDEX idx_prayer_followup ON prayer_requests(org_id, followup_due_at);
 
--- ── NRI: Need Response Intelligence ──────────────────────────────────────────
+-- ── NRI: Narrative Relational Intelligence ───────────────────────────────────
 -- A signal is one directional reading about one subject, produced by a named
 -- rule. It carries its own reasons so the UI never has to re-derive "why".
 -- Signals are derived data: they can always be rebuilt from D1 by

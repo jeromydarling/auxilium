@@ -25,6 +25,11 @@ const PREFIXES = {
   document: 'doc',
   audit: 'aud',
   cmsPage: 'page',
+  contribution: 'con',
+  disbursement: 'dis',
+  billingAccount: 'bacct',
+  billingPeriod: 'bper',
+  billingEvent: 'bevt',
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

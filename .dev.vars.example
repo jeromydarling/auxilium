@@ -20,3 +20,27 @@ SESSION_SECRET="dev-only-change-me-too"
 # Absent → the panel renders a "not configured" note and the rule-based
 # explanation stands on its own. NRI scoring itself is never AI-dependent.
 ANTHROPIC_API_KEY=""
+
+# ── Stripe ───────────────────────────────────────────────────────────────────
+# Optional. Absent → billing is switched OFF, not broken: the connect and
+# invoicing endpoints answer "not configured", the webhook refuses everything,
+# and every other part of the product — the contributions ledger, the share
+# ratio, scoring, claims — works exactly as normal.
+#
+# Use test keys locally. `sk_test_...` and a webhook secret from either the
+# Stripe CLI (`stripe listen --forward-to localhost:8787/api/stripe/webhook`)
+# or the dashboard endpoint you create for the deployed environment.
+
+# Server-side API key. Never prefix with pk_ — that is the publishable key and
+# belongs in a browser, not here.
+STRIPE_SECRET_KEY=""
+
+# Signs incoming webhooks. Without it the webhook endpoint refuses every
+# request rather than trusting unsigned input — an unsigned webhook that writes
+# to the ledger would let anyone fabricate settled contributions.
+STRIPE_WEBHOOK_SECRET=""
+
+# Where Stripe returns a ministry after Connect onboarding. Defaults to the
+# request origin, which is right for local development and for a single-domain
+# deployment. Set it explicitly if the public hostname differs.
+STRIPE_RETURN_URL=""

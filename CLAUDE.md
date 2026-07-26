@@ -6,7 +6,7 @@ Health sharing ministries are communities where households share one another's
 medical costs directly. They run on relationships and spreadsheets, and they
 fail in a specific way: a family in crisis goes quiet, a case stalls in someone's
 inbox, a follow-up that was promised never happens, and nobody notices until the
-member leaves. **NRI — Need Response Intelligence — exists to notice.**
+member leaves. **NRI — Narrative Relational Intelligence — exists to notice.**
 
 ---
 
@@ -109,7 +109,7 @@ Conventions that are not negotiable:
 
 ---
 
-## NRI — Need Response Intelligence
+## NRI — Narrative Relational Intelligence
 
 ### The compass
 
@@ -265,6 +265,8 @@ Auxilium runs fully with no third-party keys and no paid plan:
 | Queues (free plan) | Imports commit inline; signals recompute inline. Logged, not silent. |
 | KV unavailable | Login rate limiting fails **open**. A broken limiter must never lock a ministry out on the day it matters. |
 | `SESSION_SECRET` | Dev uses a fixed key with a loud warning. **Production refuses to issue sessions.** |
+| `STRIPE_SECRET_KEY` | Billing is **off, not broken**. Connect and invoicing answer "not configured"; the ledger, share ratio, scoring, and claims are untouched. |
+| `STRIPE_WEBHOOK_SECRET` | The webhook **refuses every request**. An unsigned webhook that writes to the ledger would let anyone fabricate settled contributions, so refusing is the only safe answer. `/api/health` reports this as `partial`, because a key without a webhook secret takes payments and never records them. |
 
 ---
 
@@ -410,6 +412,56 @@ Three decisions worth keeping:
 Every figure on `/pricing` is computed from this module rather than typed, the
 same rule the ACA benchmark follows. Change the schedule and the page changes
 with it; the content tests fail until the two agree.
+
+### Billing
+
+| | |
+|---|---|
+| `src/lib/pricing/tiers.ts` | The schedule. Pure. |
+| `src/lib/billing/period.ts` | Month boundaries, closability, settlement. Pure. |
+| `workers/lib/stripe.ts` | A small hand-written Stripe client + webhook signatures |
+| `workers/lib/billing-service.ts` | D1 ↔ Stripe ↔ the schedule |
+| `workers/api/billing.ts` | Connect onboarding, periods, estimates |
+| `workers/api/stripe-webhook.ts` | The only unauthenticated write path |
+
+**Member contributions never touch an Auxilium account.** They settle into the
+ministry's own connected account; Auxilium invoices its platform fee against
+that account at month end. Nothing in the schema models Auxilium receiving a
+member's contribution, which is what lets the pricing page say sharing funds are
+never held as operating money.
+
+**The Stripe client is hand-written**, for the same reason the CSV parser is:
+the official SDK is large and ships a Node HTTP client that has to be replaced
+to work in a Worker at all, and the surface actually needed here is five
+endpoints and a signature check.
+
+Four things about the webhook are load-bearing, and each has a test:
+
+- **Signature before meaning.** The payload is verified before it is parsed for
+  anything except JSON validity. Without `STRIPE_WEBHOOK_SECRET` it refuses
+  everything rather than trusting unsigned input — an unsigned webhook that
+  writes to the ledger lets anyone fabricate settled contributions.
+- **The signed payload is `timestamp.body`, with a five-minute tolerance.**
+  Signing the body alone would make a captured request valid forever.
+- **Every event is claimed exactly once**, by Stripe's own event id under a
+  unique constraint. Stripe retries on any non-2xx and can deliver a successful
+  event twice; without the claim a redelivered `payment_intent.succeeded` bills
+  a ministry for the same money twice. A handler failure *releases* the claim
+  and returns 500, because that is the one case where a retry is wanted.
+- **Unknown event types return 200.** Erroring on an event we do not handle
+  makes Stripe retry it forever and eventually disable the endpoint — taking the
+  events we do handle down with it.
+
+**Refunds net against the month the contribution was in**, not the month the
+refund happened, and the fee is charged on the net. Charging a percentage of
+money that went back to a member would be indefensible.
+
+**The monthly close runs at 06:00 UTC on the 1st**, not midnight. Card
+settlement is not instantaneous, and closing a month the second it ends invoices
+before the last of its money has landed. `closePeriod` refuses to close a period
+that has not ended and is idempotent at two levels — a period past `open` is
+returned untouched, and Stripe's idempotency keys are derived from org and
+period — so a double-fired cron cannot double-bill.
 
 **`formatRate` rounds in basis-point space** before formatting. Two decimals of
 a percentage *is* one basis point, and `(82.5/100).toFixed(2)` renders "0.82"
