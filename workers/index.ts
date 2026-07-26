@@ -160,7 +160,18 @@ export default {
   fetch: app.fetch,
 
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
-    switch (batch.queue) {
+    // Queues are per-environment (auxilium-imports, auxilium-imports-prod), so
+    // dispatch on the family rather than the literal name. Matching exactly
+    // would send every production message to the default branch below — which
+    // acks, and so would discard real import and signal jobs silently instead
+    // of failing where someone would see it.
+    //
+    // The suffix is stripped rather than prefix-matched so that a dead-letter
+    // queue (auxilium-imports-prod-dlq) never resolves to the normal handler:
+    // messages land there precisely because that handler already failed them.
+    const family = batch.queue.replace(/-(?:preview|prod)$/, '');
+
+    switch (family) {
       case 'auxilium-imports':
         return handleImportBatch(batch as MessageBatch<ImportJob>, env);
       case 'auxilium-signals':

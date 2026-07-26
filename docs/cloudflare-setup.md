@@ -107,11 +107,25 @@ catch the failure and run inline instead. You will see this in the logs:
 That is the degradation working, not a bug.
 
 ```bash
+# dev and preview
 npx wrangler queues create auxilium-imports
 npx wrangler queues create auxilium-signals
 npx wrangler queues create auxilium-imports-dlq
 npx wrangler queues create auxilium-signals-dlq
+
+# production — its own set, like its own D1/R2/KV
+npx wrangler queues create auxilium-imports-prod
+npx wrangler queues create auxilium-signals-prod
+npx wrangler queues create auxilium-imports-prod-dlq
+npx wrangler queues create auxilium-signals-prod-dlq
 ```
+
+Production has separate queues on purpose. **A Cloudflare queue has exactly one
+consumer.** Share one set across environments and whichever Worker deployed
+most recently owns that slot while the others remain producers — so a
+production import can be consumed by a Worker bound to the dev database and
+committed there. The import appears to hang forever and the rows land in the
+wrong place, with no error raised anywhere.
 
 The two `-dlq` queues catch messages that fail three times. Without them,
 `wrangler deploy` will reject the config, since `wrangler.toml` names them as
@@ -394,8 +408,10 @@ The IDs currently in `wrangler.toml`:
 | KV `CACHE` (prod) | `AUXILIUM_CACHE_PROD` | `97b32f34cc414900b0243b5c4ffd1415` |
 | KV `CONFIG` (dev) | `AUXILIUM_CONFIG_DEV` | `428a86cb58f8456aba0eaf01ce7b7605` |
 | KV `CONFIG` (prod) | `AUXILIUM_CONFIG_PROD` | `fbccaa55ec0546db851a26822e5cf637` |
-| Queue | `auxilium-imports` | *by name — see Queues above* |
-| Queue | `auxilium-signals` | *by name — see Queues above* |
+| Queue (dev/preview) | `auxilium-imports` | *by name — see Queues above* |
+| Queue (dev/preview) | `auxilium-signals` | *by name — see Queues above* |
+| Queue (production) | `auxilium-imports-prod` | *by name — see Queues above* |
+| Queue (production) | `auxilium-signals-prod` | *by name — see Queues above* |
 
 These are resource identifiers, not credentials. They are safe in the repo;
 secrets are not, and none are.

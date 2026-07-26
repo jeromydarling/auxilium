@@ -203,8 +203,18 @@ jobs:
       # wrangler.toml still declares consumers, so this needs a human decision.
       - name: Ensure queues exist
         run: |
+          # Production has its own queues, matching its own D1/R2/KV. See the
+          # comment above the production queue blocks in wrangler.toml for why
+          # sharing them across environments was a data-integrity problem and
+          # not just untidiness.
+          if [ "$TARGET_ENV" = "production" ]; then
+            QUEUES="auxilium-imports-prod auxilium-signals-prod auxilium-imports-prod-dlq auxilium-signals-prod-dlq"
+          else
+            QUEUES="auxilium-imports auxilium-signals auxilium-imports-dlq auxilium-signals-dlq"
+          fi
+
           MISSING=0
-          for q in auxilium-imports auxilium-signals auxilium-imports-dlq auxilium-signals-dlq; do
+          for q in $QUEUES; do
             if bunx wrangler queues info "$q" >/dev/null 2>&1; then
               echo "  $q — already exists"
             elif bunx wrangler queues create "$q" >/dev/null 2>&1; then

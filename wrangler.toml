@@ -239,24 +239,36 @@ id = "97b32f34cc414900b0243b5c4ffd1415"
 binding = "CONFIG"
 id = "fbccaa55ec0546db851a26822e5cf637"
 
+# Production gets its OWN queues, like it gets its own D1, R2, and KV.
+#
+# Queues were the one resource shared across every environment, and that was a
+# real hazard rather than an untidiness. A Cloudflare queue has exactly one
+# consumer. With a single shared set, whichever Worker deployed last owned the
+# consumer slot while every other Worker stayed a producer — so a production
+# roster import could be picked up by a Worker bound to the *dev* database and
+# committed there. The import would appear to hang forever, and the rows would
+# land in the wrong place with no error anywhere.
+#
+# Splitting them makes that impossible: production produces and consumes only
+# its own queues.
 [[env.production.queues.producers]]
 binding = "IMPORT_QUEUE"
-queue = "auxilium-imports"
+queue = "auxilium-imports-prod"
 
 [[env.production.queues.producers]]
 binding = "SIGNAL_QUEUE"
-queue = "auxilium-signals"
+queue = "auxilium-signals-prod"
 
 [[env.production.queues.consumers]]
-queue = "auxilium-imports"
+queue = "auxilium-imports-prod"
 max_batch_size = 25
 max_batch_timeout = 10
 max_retries = 3
-dead_letter_queue = "auxilium-imports-dlq"
+dead_letter_queue = "auxilium-imports-prod-dlq"
 
 [[env.production.queues.consumers]]
-queue = "auxilium-signals"
+queue = "auxilium-signals-prod"
 max_batch_size = 50
 max_batch_timeout = 15
 max_retries = 3
-dead_letter_queue = "auxilium-signals-dlq"
+dead_letter_queue = "auxilium-signals-prod-dlq"

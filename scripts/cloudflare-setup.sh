@@ -22,7 +22,14 @@ D1_PROD="auxilium-db-prod"
 R2_DEV="auxilium-documents-dev"
 R2_PROD="auxilium-documents-prod"
 KV_NAMESPACES=(AUXILIUM_CACHE_DEV AUXILIUM_CACHE_PROD AUXILIUM_CONFIG_DEV AUXILIUM_CONFIG_PROD)
-QUEUES=(auxilium-imports auxilium-signals auxilium-imports-dlq auxilium-signals-dlq)
+# Dev/preview share one set; production has its own, mirroring the D1/R2/KV
+# split. A Cloudflare queue has exactly one consumer, so a shared set lets the
+# most recently deployed Worker consume every other environment's jobs.
+QUEUES=(
+  auxilium-imports auxilium-signals auxilium-imports-dlq auxilium-signals-dlq
+  auxilium-imports-prod auxilium-signals-prod
+  auxilium-imports-prod-dlq auxilium-signals-prod-dlq
+)
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
