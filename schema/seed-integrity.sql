@@ -19,35 +19,12 @@
 -- Cleanup runs child-table-first, in foreign-key order. Getting this wrong is
 -- how a seed passes on a clean database and fails on every re-run: the second
 -- time through, the rows that reference these actually exist.
-DELETE FROM claim_repricing     WHERE org_id IN ('org_demo_shelter_valley', 'org_demo_redemption');
-DELETE FROM appeals             WHERE org_id IN ('org_demo_shelter_valley', 'org_demo_redemption');
-DELETE FROM integrity_snapshots WHERE org_id IN ('org_demo_shelter_valley', 'org_demo_redemption');
-DELETE FROM sharing_guidelines  WHERE org_id IN ('org_demo_shelter_valley', 'org_demo_redemption');
-DELETE FROM disbursements       WHERE org_id IN ('org_demo_shelter_valley', 'org_demo_redemption');
-DELETE FROM contributions       WHERE org_id IN ('org_demo_shelter_valley', 'org_demo_redemption');
 
 -- The comparison org is rebuilt from scratch each run. Its needs reference its
 -- members, so they go first.
-DELETE FROM need_updates      WHERE org_id = 'org_demo_redemption';
-DELETE FROM prayer_requests   WHERE org_id = 'org_demo_redemption';
-DELETE FROM needs             WHERE org_id = 'org_demo_redemption';
-DELETE FROM household_members WHERE org_id = 'org_demo_redemption';
-DELETE FROM households        WHERE org_id = 'org_demo_redemption';
-DELETE FROM documents         WHERE org_id = 'org_demo_redemption';
-DELETE FROM import_rows       WHERE org_id = 'org_demo_redemption';
-DELETE FROM import_mappings   WHERE org_id = 'org_demo_redemption';
-DELETE FROM imports           WHERE org_id = 'org_demo_redemption';
-DELETE FROM cms_pages         WHERE org_id = 'org_demo_redemption';
 -- Derived NRI data. Easy to forget precisely because nothing writes it by
 -- hand — signing in to this org once is enough for the engine to create it,
 -- and then the organization row can no longer be deleted.
-DELETE FROM member_signals    WHERE org_id = 'org_demo_redemption';
-DELETE FROM nri_sessions      WHERE org_id = 'org_demo_redemption';
-DELETE FROM sessions          WHERE org_id = 'org_demo_redemption';
-DELETE FROM audit_log         WHERE org_id = 'org_demo_redemption';
-DELETE FROM members           WHERE org_id = 'org_demo_redemption';
-DELETE FROM users             WHERE org_id = 'org_demo_redemption';
-DELETE FROM organizations     WHERE id = 'org_demo_redemption';
 
 -- ── Shelter Valley: published guidelines ─────────────────────────────────────
 

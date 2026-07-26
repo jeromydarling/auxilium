@@ -22,23 +22,6 @@
 --   grace@sheltervalley.example / auxilium-demo-2026
 -- ─────────────────────────────────────────────────────────────────────────────
 
-DELETE FROM member_signals WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM nri_sessions  WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM need_updates  WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM needs         WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM prayer_requests WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM household_members WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM import_rows   WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM import_mappings WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM imports       WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM documents     WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM audit_log     WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM cms_pages     WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM members       WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM households    WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM sessions      WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM users         WHERE org_id = 'org_demo_shelter_valley';
-DELETE FROM organizations WHERE id = 'org_demo_shelter_valley';
 
 -- ── Organization and staff ───────────────────────────────────────────────────
 

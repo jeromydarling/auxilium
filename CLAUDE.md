@@ -719,6 +719,25 @@ in: an ordinary active mix, a large claim in review, two declines (one
 pre-existing, one fixable documentation), a need being paid, and one member
 invited but never activated so the acceptance flow has something to redeem.
 
+**Teardown lives in `schema/seed-reset.sql` and runs first.** Each seed file
+used to clean up after itself, which worked only because the local workflow
+wipes the database before seeding — the deletes never had anything to delete.
+Seeding a database that already has rows, which is what seeding any deployed
+environment is, hit a foreign key immediately: `seed.sql` deletes `needs` while
+the integrity seed's disbursements and appeals still point at them, and now
+`member_accounts` points at `members` too. One leaf-first teardown fixes the
+ordering once rather than in three files that each know a piece of it. Every
+statement is scoped to the two demo organizations by id, which is the property
+that makes it safe to point at a deployed database at all.
+
+Seeding a deployed environment is a manual `workflow_dispatch` only. Production
+additionally requires typing a confirmation phrase — a push cannot set it and a
+checkbox is one mis-click. The old guard refused production outright, which
+protected against accident at the cost of making the demo unreachable on the
+live site; the phrase keeps the first property without the second. The same
+step also had the dev database name hardcoded regardless of target, and ran
+only the first of the seed files.
+
 ---
 
 ## The marketing site

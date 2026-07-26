@@ -22,9 +22,19 @@ on:
         options: [production, preview]
         default: production
       seed_demo:
-        description: Seed demo data (preview only — never touches production)
+        description: Seed demo data into the target environment
         type: boolean
         default: false
+      # Typed, not a checkbox, and only ever reachable from a manual run.
+      #
+      # The point of the old blanket refusal was that demo data must never
+      # appear in production by accident — not that it must never appear. A
+      # push cannot set this, `workflow_dispatch` defaults it empty, and a
+      # checkbox is one mis-click; a phrase somebody has to type is a decision.
+      confirm_seed_production:
+        description: 'To seed PRODUCTION, type: seed production demo data'
+        type: string
+        default: ''
 
 concurrency:
   # One deploy at a time per environment; a newer push supersedes an older one.
@@ -248,14 +258,36 @@ jobs:
 
       # Preview only, and guarded twice — the seed script itself targets the
       # dev database, and this step refuses to run outside preview regardless.
+      # Two bugs lived here besides the refusal: the database name was
+      # hardcoded to the dev one regardless of target, and only the first of
+      # three seed files ran — so even the preview path produced a half-seeded
+      # ministry with no integrity ledger and no member portal accounts.
       - name: Seed demo data
         if: ${{ github.event.inputs.seed_demo == 'true' }}
         run: |
+          set -euo pipefail
+
           if [ "$TARGET_ENV" = "production" ]; then
-            echo "::error::Refusing to seed production."
-            exit 1
+            if [ "${{ github.event.inputs.confirm_seed_production }}" != "seed production demo data" ]; then
+              echo "::error::Seeding production requires typing the confirmation phrase."
+              exit 1
+            fi
+            DB=auxilium-db-prod
+          else
+            DB=auxilium-db-dev
           fi
-          bunx wrangler d1 execute auxilium-db-dev --remote --file=./schema/seed.sql
+
+          echo "Seeding $DB ($TARGET_ENV)."
+
+          # Order matters. seed-reset clears both demo orgs leaf-first, so
+          # this is re-runnable against a database that already has rows —
+          # which every deployed one does. Then the ministry and its people,
+          # the ledger and the failing ministry, and the portal accounts that
+          # reference both.
+          for f in seed-reset.sql seed.sql seed-integrity.sql seed-portal.sql; do
+            echo "→ $f"
+            bunx wrangler d1 execute "$DB" --remote --file="./schema/$f"
+          done
 
       # Local green is not shipped. Fetch the real thing and confirm it answers.
       #
