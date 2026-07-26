@@ -40,6 +40,33 @@ function isRealDate(value: string): boolean {
   );
 }
 
+/**
+ * The longest any single spine field may be.
+ *
+ * Generous — a real name, a real address line, and a hyphenated surname all fit
+ * comfortably — and present because this is the one unauthenticated write path
+ * where the field is not declared by a form. Configurable answers already carry
+ * their own `maxLength` and are truncated by `pruneAnswers`; the spine had
+ * nothing, so a stranger could post a megabyte as a first name and have it
+ * written to the members table on approval.
+ *
+ * Refused rather than truncated, for the same reason the household cap is:
+ * silently storing half of what somebody typed is how a record ends up wrong in
+ * a way nobody can see.
+ */
+const MAX_FIELD = 200;
+
+/** The one field where a person legitimately writes more than a line. */
+const MAX_ADDRESS = 300;
+
+function tooLong(
+  value: string | undefined, limit: number, path: string, issues: ValidationIssue[],
+): void {
+  if (value && value.length > limit) {
+    issues.push({ path, message: `Please keep this under ${limit} characters.` });
+  }
+}
+
 function validatePerson(person: HouseholdApplicant, path: string, issues: ValidationIssue[]): void {
   if (!person.first_name?.trim()) {
     issues.push({ path: `${path}.first_name`, message: 'A first name is needed.' });
@@ -50,6 +77,10 @@ function validatePerson(person: HouseholdApplicant, path: string, issues: Valida
   if (person.date_of_birth && !isRealDate(person.date_of_birth)) {
     issues.push({ path: `${path}.date_of_birth`, message: 'That date does not look right.' });
   }
+
+  tooLong(person.first_name, MAX_FIELD, `${path}.first_name`, issues);
+  tooLong(person.last_name, MAX_FIELD, `${path}.last_name`, issues);
+  tooLong(person.relationship, MAX_FIELD, `${path}.relationship`, issues);
 }
 
 function validateField(
@@ -137,6 +168,14 @@ export function validateApplication(
       message: 'That is more people than we can take on one application. Please call us.',
     });
   }
+
+  tooLong(spine.email, MAX_FIELD, 'spine.email', issues);
+  tooLong(spine.phone, MAX_FIELD, 'spine.phone', issues);
+  tooLong(spine.address_line1, MAX_ADDRESS, 'spine.address_line1', issues);
+  tooLong(spine.address_line2, MAX_ADDRESS, 'spine.address_line2', issues);
+  tooLong(spine.city, MAX_FIELD, 'spine.city', issues);
+  tooLong(spine.state, MAX_FIELD, 'spine.state', issues);
+  tooLong(spine.postal_code, MAX_FIELD, 'spine.postal_code', issues);
 
   spine.household.forEach((person, i) => validatePerson(person, `spine.household.${i}`, issues));
 

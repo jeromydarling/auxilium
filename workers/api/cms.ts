@@ -8,7 +8,7 @@ import { nowIso } from '../../src/lib/utils';
 import { loadSite } from '../lib/site-service';
 import { defaultSite, reviewSite, slugAvailable, resolveSite, siteNav } from '../../src/lib/cms/blocks';
 import { dnsInstructions, normalizeDomain, validateDomain, verificationToken } from '../../src/lib/cms/domains';
-import { verifyDomain } from '../lib/domain-service';
+import { verifyDomain, forgetHost } from '../lib/domain-service';
 
 /**
  * The ministry site, from the staff side.
@@ -309,6 +309,11 @@ cms.put('/site/domain', requireRole('owner'), async (c) => {
     return c.json({ error: 'Another ministry has already claimed that domain.' }, 409);
   }
 
+  // Clearing verification means this hostname must stop routing immediately.
+  // Re-claiming a domain another ministry previously held is the case that
+  // matters: without this the old owner's cached entry would keep serving.
+  await forgetHost(c.env, clean);
+
   await audit(c.env.DB, {
     orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'cms.domain_claimed',
     subjectType: 'organization', subjectId: user.org_id, meta: { domain: clean },
@@ -337,6 +342,15 @@ cms.post('/site/domain/verify', requireRole('owner', 'admin'), async (c) => {
 
 cms.delete('/site/domain', requireRole('owner'), async (c) => {
   const user = (await currentUser(c))!;
+
+  // Read before clearing, so the cached routing entry can be dropped. Without
+  // this the hostname keeps resolving to this ministry until the TTL expires —
+  // which is the wrong direction to be wrong in for an operation whose whole
+  // purpose is to stop serving an address.
+  const before = await first<{ custom_domain: string | null }>(
+    c.env.DB, 'SELECT custom_domain FROM organizations WHERE id = ?', user.org_id,
+  );
+
   await run(
     c.env.DB,
     `UPDATE organizations
@@ -345,6 +359,8 @@ cms.delete('/site/domain', requireRole('owner'), async (c) => {
       WHERE id = ?`,
     nowIso(), user.org_id,
   );
+  await forgetHost(c.env, before?.custom_domain);
+
   await audit(c.env.DB, {
     orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'cms.domain_released',
     subjectType: 'organization', subjectId: user.org_id,

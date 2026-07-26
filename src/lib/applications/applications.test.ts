@@ -21,6 +21,51 @@ const GOOD: ApplicationSubmission = {
   },
 };
 
+describe('field length on the public write path', () => {
+  const long = 'x'.repeat(5000);
+
+  it('refuses an absurd name rather than storing it', () => {
+    // The one unauthenticated write path where the field is not declared by a
+    // form, so nothing else caps it. A stranger could otherwise post a megabyte
+    // as a first name and have it written to the members table on approval.
+    const issues = validateApplication(DEFAULT_FORM, {
+      spine: { ...GOOD.spine, first_name: long },
+      answers: GOOD.answers,
+    });
+    expect(issues.some((i) => i.path === 'spine.first_name')).toBe(true);
+  });
+
+  it('refuses rather than truncating', () => {
+    // Silently storing half of what somebody typed is how a record ends up
+    // wrong in a way nobody can see.
+    const submission = { spine: { ...GOOD.spine, city: long }, answers: GOOD.answers };
+    expect(validateApplication(DEFAULT_FORM, submission).length).toBeGreaterThan(0);
+    expect(submission.spine.city).toHaveLength(5000);
+  });
+
+  it('caps everyone on the application, not only the applicant', () => {
+    const issues = validateApplication(DEFAULT_FORM, {
+      spine: {
+        ...GOOD.spine,
+        household: [{ first_name: long, last_name: 'Okafor' }],
+      },
+      answers: GOOD.answers,
+    });
+    expect(issues.some((i) => i.path === 'spine.household.0.first_name')).toBe(true);
+  });
+
+  it('still accepts a genuinely long real address', () => {
+    const issues = validateApplication(DEFAULT_FORM, {
+      spine: {
+        ...GOOD.spine,
+        address_line1: 'Apartment 12B, The Old Schoolhouse Residences, 4820 North Rutherford Boulevard Extension',
+      },
+      answers: GOOD.answers,
+    });
+    expect(issues).toEqual([]);
+  });
+});
+
 describe('validating an application', () => {
   it('accepts a complete one', () => {
     expect(validateApplication(DEFAULT_FORM, GOOD)).toEqual([]);

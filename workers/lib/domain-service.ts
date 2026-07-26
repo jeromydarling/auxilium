@@ -144,6 +144,10 @@ export async function verifyDomain(env: Env, orgId: string): Promise<DomainStatu
     orgId,
   );
 
+  // A ministry that has just been told "verified" must not spend the next
+  // minute looking at a 404 on the address we told them is live.
+  if (ok) await forgetHost(env, org.custom_domain);
+
   return {
     domain: org.custom_domain,
     token: org.custom_domain_token,
@@ -154,21 +158,77 @@ export async function verifyDomain(env: Env, orgId: string): Promise<DomainStatu
 }
 
 /**
+ * How long a host → ministry answer is cached, hit or miss.
+ *
+ * Short, because it is on the path to a ministry's site going live: a minute of
+ * "not found" after verification is tolerable, an hour is a support ticket.
+ */
+const HOST_CACHE_SECONDS = 60;
+
+/**
  * The organization serving this hostname, or null.
  *
  * Reads `custom_domain_verified_at`, never `custom_domain` alone. That is the
  * whole security boundary of the feature: a row is a claim, and a claim must
  * not be enough to have your content served under somebody else's name.
+ *
+ * **Misses are cached as well as hits, and that is the point.** The `Host`
+ * header is chosen by whoever made the request, so without a negative cache a
+ * stranger could put a different random hostname on every request and turn each
+ * one into a database read — on *every* path, since this check runs ahead of
+ * the API and the router. Caching only successes would leave that wide open,
+ * because the attack consists entirely of misses.
+ *
+ * KV failing means falling through to D1, never failing the request: a cache
+ * outage must not take every ministry's website down.
  */
 export async function orgByHost(env: Env, host: string): Promise<{ slug: string } | null> {
   const domain = normalizeDomain(host);
   if (!domain) return null;
 
-  return first<{ slug: string }>(
+  // Bounded before it is used as a key: a 10KB Host header should cost nothing.
+  if (domain.length > 253) return null;
+
+  const key = `host:${domain}`;
+
+  try {
+    const cached = await env.CACHE.get(key);
+    // '' is the recorded miss. Distinct from null, which is "not cached".
+    if (cached === '') return null;
+    if (cached) return { slug: cached };
+  } catch {
+    // Fall through to D1.
+  }
+
+  const org = await first<{ slug: string }>(
     env.DB,
     `SELECT slug FROM organizations
       WHERE custom_domain = ? AND custom_domain_verified_at IS NOT NULL
         AND deleted_at IS NULL`,
     domain,
   );
+
+  try {
+    await env.CACHE.put(key, org?.slug ?? '', { expirationTtl: HOST_CACHE_SECONDS });
+  } catch {
+    // Not caching is slow, not wrong.
+  }
+
+  return org;
+}
+
+/**
+ * Drop a cached answer for one hostname.
+ *
+ * Called the moment a domain is verified or released, so a ministry that has
+ * just been told "verified" does not spend the next minute looking at a 404 on
+ * the address it was told is now live.
+ */
+export async function forgetHost(env: Env, domain: string | null | undefined): Promise<void> {
+  if (!domain) return;
+  try {
+    await env.CACHE.delete(`host:${normalizeDomain(domain)}`);
+  } catch {
+    // The TTL will clear it shortly regardless.
+  }
 }
