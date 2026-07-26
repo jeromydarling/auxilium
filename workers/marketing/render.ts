@@ -1,36 +1,40 @@
-import type { MarketingPage, Block, Cta } from '../../src/content/types';
+import type { MarketingPage, Block, Cta, Photo } from '../../src/content/types';
 import { marketingMeta, structuredData, SITE } from '../../src/content/meta';
 import { pathFor, guides, comparisons } from '../../src/content/registry';
+import { FEATURES, FEATURE_CATEGORIES, shippedCount } from '../../src/content/features';
+import { esc } from './esc';
+import { TOKENS, MOTION, logoMark, logoLockup, faviconDataUri } from './brand';
+import { LAYOUT, COMPONENTS, MOCKUPS, FEATURES_INDEX } from './styles';
+import { browserFrame, triageBoard, nriCompass, integrityCard, importPreview, claimsTracker } from './mockups';
 
 /**
  * The marketing renderer.
  *
- * Server-rendered HTML with no client JavaScript at all. That is a deliberate
- * choice rather than a limitation: these pages exist to be read by search
- * crawlers and by assistants summarizing this category, and both do
- * dramatically better with real HTML than with a single-page app that paints
- * itself after a bundle loads. It also means the site is fast and readable on
- * a bad connection in a hospital car park, which is not a hypothetical for
- * this audience.
+ * Server-rendered HTML. The pages exist to be read by search crawlers and by
+ * assistants summarizing this category, and both do dramatically better with
+ * real markup than with an app that paints itself after a bundle loads. It also
+ * means the site is fast on a bad connection in a hospital car park, which for
+ * this audience is not hypothetical.
  *
- * Styling is inlined for the same reason — one request, no flash, nothing to
- * block rendering.
+ * **On the script tag.** This used to ship literally zero JavaScript. It now
+ * ships roughly a kilobyte, inline, for two things HTML cannot do: a mobile
+ * navigation drawer with correct focus and escape handling, and scroll-reveal
+ * animation. The rule that replaced "no JavaScript" is stricter and more
+ * useful: *the page is complete without it*. Reveal animations are armed by a
+ * class the script adds to <html>, so with the script blocked, failed, or not
+ * yet parsed, every element renders exactly as authored — visible. The mobile
+ * drawer degrades to a link to the sitemap-ish footer. Nothing is hydrated,
+ * nothing is fetched, and no content exists only in JavaScript.
  */
 
-/** Escape anything interpolated into HTML. Every value passes through here. */
-export function esc(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+export { esc };
 
 /** JSON-LD needs to survive </script> in content. */
 function escJsonLd(json: unknown): string {
   return JSON.stringify(json).replace(/</g, '\\u003c');
 }
+
+const STYLES = TOKENS + MOTION + LAYOUT + COMPONENTS + MOCKUPS + FEATURES_INDEX;
 
 export function renderPage(page: MarketingPage, origin: string): string {
   const meta = marketingMeta(page, origin);
@@ -44,12 +48,14 @@ export function renderPage(page: MarketingPage, origin: string): string {
     .map((g) => `<script type="application/ld+json">${escJsonLd(g)}</script>`)
     .join('\n    ');
 
-  // The guides index renders its list from the registry rather than from
-  // hand-written blocks, so a new guide appears without touching this page.
+  // The first block is a hero on most pages; it renders its own title, so the
+  // generic page title is suppressed to avoid two competing h1-scale headings.
+  const leadsWithHero = page.blocks[0]?.type === 'hero';
+
   const body =
     page.slug === 'guides'
-      ? page.blocks.map(renderBlock).join('\n') + renderGuideIndex()
-      : page.blocks.map(renderBlock).join('\n');
+      ? page.blocks.map((b) => renderBlock(b, page)).join('\n') + renderGuideIndex()
+      : page.blocks.map((b) => renderBlock(b, page)).join('\n');
 
   return `<!doctype html>
 <html lang="en">
@@ -58,177 +64,383 @@ export function renderPage(page: MarketingPage, origin: string): string {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${esc(meta.title)}</title>
     <link rel="canonical" href="${esc(meta.canonical)}">
+    <link rel="icon" href="${faviconDataUri()}">
+    <meta name="theme-color" content="#0b0f14" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#fcfdfe" media="(prefers-color-scheme: light)">
     ${metaTags}
     ${jsonLd}
     <style>${STYLES}</style>
   </head>
   <body>
+    <a class="skip" href="#main">Skip to content</a>
     ${renderHeader()}
+    ${renderDrawer()}
     <main id="main">
-      <h1 class="page-title">${esc(page.h1)}</h1>
+      ${leadsWithHero ? '' : `<div class="wrap band"><h1 class="page-title reveal">${esc(page.h1)}</h1></div>`}
       ${body}
       ${renderRelated(page)}
     </main>
     ${renderFooter()}
+    <script>${SCRIPT}</script>
   </body>
 </html>`;
 }
 
 // ── Blocks ───────────────────────────────────────────────────────────────────
 
-function renderBlock(block: Block): string {
+function renderBlock(block: Block, page: MarketingPage): string {
   switch (block.type) {
     case 'hero':
-      return `<section class="hero">
-        ${block.kicker ? `<p class="kicker">${esc(block.kicker)}</p>` : ''}
-        <p class="hero-sub">${esc(block.subheading)}</p>
-        <p class="actions">
-          ${block.cta ? renderCta(block.cta, 'primary') : ''}
-          ${block.secondaryCta ? renderCta(block.secondaryCta, 'secondary') : ''}
-        </p>
+      return renderHero(block, page);
+
+    case 'split': {
+      const visual = block.mockup
+        ? mockupFor(block.mockup)
+        : block.photo
+          ? renderPhoto(block.photo, 'split-photo')
+          : '';
+      return `<section class="band">
+        <div class="wrap split ${block.flip ? 'flip' : ''}">
+          <div class="split-copy reveal">
+            ${block.eyebrow ? `<p class="eyebrow">${esc(block.eyebrow)}</p>` : ''}
+            <h2>${esc(block.heading)}</h2>
+            ${block.paragraphs.map((p) => `<p class="intro">${esc(p)}</p>`).join('')}
+            ${
+              block.bullets?.length
+                ? `<ul class="ticks">${block.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>`
+                : ''
+            }
+            ${block.cta ? `<p class="actions">${renderCta(block.cta, 'secondary')}</p>` : ''}
+          </div>
+          <div class="split-visual reveal reveal-2">${visual}</div>
+        </div>
+      </section>`;
+    }
+
+    case 'mockup':
+      return `<section class="band">
+        <div class="wrap">
+          ${block.heading ? `<h2 class="reveal center">${esc(block.heading)}</h2>` : ''}
+          <div class="reveal reveal-1">${mockupFor(block.kind)}</div>
+          ${block.caption ? `<p class="mk-caption reveal reveal-2">${esc(block.caption)}</p>` : ''}
+        </div>
+      </section>`;
+
+    case 'photo':
+      return `<section class="band"><div class="wrap reveal">${renderPhoto(block.photo, 'wide-photo')}</div></section>`;
+
+    case 'steps':
+      return `<section class="band band-tint">
+        <div class="wrap">
+          <h2 class="reveal">${esc(block.heading)}</h2>
+          ${block.intro ? `<p class="intro reveal">${esc(block.intro)}</p>` : ''}
+          <ol class="steps">
+            ${block.steps.map((s, i) => `<li class="step reveal reveal-${Math.min(i + 1, 5)}">
+              <span class="step-n">${i + 1}</span>
+              <h3>${esc(s.title)}</h3>
+              <p>${esc(s.body)}</p>
+            </li>`).join('')}
+          </ol>
+        </div>
+      </section>`;
+
+    case 'featureIndex':
+      return renderFeatureIndex();
+
+    case 'pricing':
+      return `<section class="band">
+        <div class="wrap">
+          <h2 class="reveal">${esc(block.heading)}</h2>
+          ${block.intro ? `<p class="intro reveal">${esc(block.intro)}</p>` : ''}
+          <div class="tiers">
+            ${block.tiers.map((t, i) => `<article class="tier ${t.featured ? 'featured' : ''} reveal reveal-${Math.min(i + 1, 5)}">
+              ${t.featured ? '<span class="tier-flag">Most ministries</span>' : ''}
+              <h3>${esc(t.name)}</h3>
+              <p class="tier-who">${esc(t.forWho)}</p>
+              <p class="tier-price">${esc(t.priceNote)}</p>
+              <ul class="ticks">${t.includes.map((f) => `<li>${esc(f)}</li>`).join('')}</ul>
+              <p class="actions">${renderCta(t.cta, t.featured ? 'primary' : 'secondary')}</p>
+            </article>`).join('')}
+          </div>
+          ${block.footnote ? `<p class="tier-foot reveal">${esc(block.footnote)}</p>` : ''}
+        </div>
       </section>`;
 
     case 'stat':
-      return `<section class="stat">
+      return `<section class="band"><div class="wrap"><div class="stat reveal">
         <p class="stat-value">${esc(block.value)}</p>
         <p class="stat-label">${esc(block.label)}</p>
         ${block.source ? renderSource(block.source) : ''}
-      </section>`;
+      </div></div></section>`;
 
     case 'statRow':
-      return `<section class="stat-row">
-        ${block.stats.map((s) => `<div class="stat">
+      return `<section class="band"><div class="wrap"><div class="stat-row">
+        ${block.stats.map((s, i) => `<div class="stat reveal reveal-${Math.min(i + 1, 5)}">
           <p class="stat-value">${esc(s.value)}</p>
           <p class="stat-label">${esc(s.label)}</p>
           ${s.source ? renderSource(s.source) : ''}
         </div>`).join('')}
-      </section>`;
+      </div></div></section>`;
 
     case 'prose':
-      return `<section class="prose">
+      return `<section class="band"><div class="wrap narrow prose reveal">
         ${block.heading ? `<h2>${esc(block.heading)}</h2>` : ''}
         ${block.paragraphs.map((p) => `<p>${esc(p)}</p>`).join('')}
-      </section>`;
+      </div></section>`;
 
     case 'featureList':
-      return `<section class="features">
-        <h2>${esc(block.heading)}</h2>
-        ${block.intro ? `<p class="intro">${esc(block.intro)}</p>` : ''}
-        <div class="feature-grid">
-          ${block.features.map((f) => `<article class="feature">
-            <h3>${esc(f.title)}</h3>
-            <p>${esc(f.body)}</p>
-            ${f.prevents ? `<p class="prevents"><span>Pattern this addresses:</span> ${esc(f.prevents)}</p>` : ''}
-          </article>`).join('')}
+      return `<section class="band">
+        <div class="wrap">
+          <h2 class="reveal">${esc(block.heading)}</h2>
+          ${block.intro ? `<p class="intro reveal">${esc(block.intro)}</p>` : ''}
+          <div class="feature-grid">
+            ${block.features.map((f, i) => `<article class="feature reveal reveal-${Math.min(i + 1, 5)}">
+              <h3>${esc(f.title)}</h3>
+              <p>${esc(f.body)}</p>
+              ${f.prevents ? `<p class="prevents"><span>Pattern this addresses:</span> ${esc(f.prevents)}</p>` : ''}
+            </article>`).join('')}
+          </div>
         </div>
       </section>`;
 
     case 'comparison':
-      return `<section class="comparison">
-        <h2>${esc(block.heading)}</h2>
-        ${block.intro ? `<p class="intro">${esc(block.intro)}</p>` : ''}
-        <div class="table-scroll">
-          <table>
-            <thead>
-              <tr><th>Capability</th><th>Auxilium</th><th>Alternative</th><th>Notes</th></tr>
-            </thead>
-            <tbody>
-              ${block.rows.map((r) => `<tr>
-                <td>${esc(r.capability)}</td>
-                <td class="mark ${r.auxilium}">${MARK[r.auxilium]}</td>
-                <td class="mark ${r.alternative}">${MARK[r.alternative]}</td>
-                <td class="note">${r.note ? esc(r.note) : ''}</td>
-              </tr>`).join('')}
-            </tbody>
-          </table>
+      return `<section class="band">
+        <div class="wrap">
+          <h2 class="reveal">${esc(block.heading)}</h2>
+          ${block.intro ? `<p class="intro reveal">${esc(block.intro)}</p>` : ''}
+          <div class="table-scroll reveal">
+            <table>
+              <thead>
+                <tr><th>Capability</th><th>Auxilium</th><th>Alternative</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                ${block.rows.map((r) => `<tr>
+                  <td>${esc(r.capability)}</td>
+                  <td class="mark ${r.auxilium}">${MARK[r.auxilium]}</td>
+                  <td class="mark ${r.alternative}">${MARK[r.alternative]}</td>
+                  <td class="note">${r.note ? esc(r.note) : ''}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>`;
 
     case 'faq':
-      return `<section class="faq">
-        <h2>${esc(block.heading)}</h2>
-        ${block.items.map((item) => `<details>
-          <summary>${esc(item.question)}</summary>
-          <p>${esc(item.answer)}</p>
-        </details>`).join('')}
+      return `<section class="band">
+        <div class="wrap narrow">
+          <h2 class="reveal">${esc(block.heading)}</h2>
+          ${block.items.map((item) => `<details class="reveal">
+            <summary>${esc(item.question)}</summary>
+            <p>${esc(item.answer)}</p>
+          </details>`).join('')}
+        </div>
       </section>`;
 
     case 'callout':
-      return `<aside class="callout ${block.tone}">
-        ${block.heading ? `<p class="callout-heading">${esc(block.heading)}</p>` : ''}
-        <p>${esc(block.body)}</p>
-      </aside>`;
+      return `<section class="band"><div class="wrap narrow">
+        <aside class="callout ${block.tone} reveal">
+          ${block.heading ? `<p class="callout-heading">${esc(block.heading)}</p>` : ''}
+          <p>${esc(block.body)}</p>
+        </aside>
+      </div></section>`;
 
     case 'quote':
-      return `<figure class="quote">
-        <blockquote>${esc(block.body)}</blockquote>
-        <figcaption>${esc(block.attribution)}${block.source ? ` — ${renderSource(block.source)}` : ''}</figcaption>
-      </figure>`;
+      return `<section class="band"><div class="wrap narrow">
+        <figure class="quote reveal">
+          <blockquote>${esc(block.body)}</blockquote>
+          <figcaption>${esc(block.attribution)}${block.source ? ` — ${renderSource(block.source)}` : ''}</figcaption>
+        </figure>
+      </div></section>`;
 
     case 'cta':
-      return `<section class="cta-block">
-        <h2>${esc(block.heading)}</h2>
-        ${block.body ? `<p>${esc(block.body)}</p>` : ''}
-        <p class="actions">
-          ${renderCta(block.cta, 'primary')}
-          ${block.secondaryCta ? renderCta(block.secondaryCta, 'secondary') : ''}
-        </p>
-      </section>`;
+      return `<section class="band"><div class="wrap">
+        <div class="cta-block reveal">
+          <h2>${esc(block.heading)}</h2>
+          ${block.body ? `<p class="lead">${esc(block.body)}</p>` : ''}
+          <p class="actions">
+            ${renderCta(block.cta, 'primary')}
+            ${block.secondaryCta ? renderCta(block.secondaryCta, 'secondary') : ''}
+          </p>
+        </div>
+      </div></section>`;
   }
+}
+
+function renderHero(
+  block: Extract<Block, { type: 'hero' }>,
+  page: MarketingPage,
+): string {
+  const visual = block.mockup
+    ? mockupFor(block.mockup, 'bframe-tilt')
+    : block.photo
+      ? `<figure class="hero-photo">
+          <img src="${esc(block.photo.src)}" alt="${esc(block.photo.alt)}" width="1376" height="860" fetchpriority="high">
+          ${block.photo.caption ? `<figcaption class="hero-caption">${esc(block.photo.caption)}</figcaption>` : ''}
+        </figure>`
+      : '';
+
+  const copy = `<div class="hero-copy">
+    ${block.kicker ? `<p class="eyebrow">${esc(block.kicker)}</p>` : ''}
+    <h1 class="page-title">${esc(page.h1)}</h1>
+    <p class="lead">${esc(block.subheading)}</p>
+    <p class="actions">
+      ${block.cta ? renderCta(block.cta, 'primary') : ''}
+      ${block.secondaryCta ? renderCta(block.secondaryCta, 'secondary') : ''}
+    </p>
+    ${
+      block.trust?.length
+        ? `<ul class="trustline">${block.trust.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>`
+        : ''
+    }
+  </div>`;
+
+  return `<section class="hero">
+    <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="wrap hero-inner">
+      ${visual ? `<div class="hero-split">${copy}<div class="hero-visual">${visual}</div></div>` : copy}
+    </div>
+  </section>`;
+}
+
+function mockupFor(kind: string, extra = ''): string {
+  switch (kind) {
+    case 'triage':
+      return withClass(triageBoard(), extra);
+    case 'compass':
+      return withClass(nriCompass(), extra);
+    case 'integrity':
+      return withClass(integrityCard(), extra);
+    case 'import':
+      return withClass(importPreview(), extra);
+    case 'claims':
+      return withClass(claimsTracker(), extra);
+    default:
+      return '';
+  }
+}
+
+/** The mockups return a frame with a known class; add a modifier onto it. */
+function withClass(html: string, extra: string): string {
+  return extra ? html.replace('class="bframe ', `class="bframe ${extra} `) : html;
+}
+
+function renderPhoto(photo: Photo, className: string): string {
+  return `<figure class="${className}">
+    <img src="${esc(photo.src)}" alt="${esc(photo.alt)}" loading="lazy" width="1264" height="848">
+    ${photo.caption ? `<figcaption>${esc(photo.caption)}</figcaption>` : ''}
+  </figure>`;
 }
 
 const MARK = { yes: '✓', partial: '~', no: '✗' } as const;
 
 function renderCta(cta: Cta, variant: 'primary' | 'secondary'): string {
-  return `<a class="btn ${variant}" href="${esc(cta.href)}">${esc(cta.label)}</a>`;
+  return `<a class="btn ${variant}" href="${esc(cta.href)}">${esc(cta.label)}<span class="arr" aria-hidden="true">→</span></a>`;
 }
 
 function renderSource(source: { label: string; url: string }): string {
   return `<a class="source" href="${esc(source.url)}" rel="nofollow noopener" target="_blank">${esc(source.label)}</a>`;
 }
 
+/**
+ * The feature index.
+ *
+ * Filtering is CSS-only — radio inputs plus `:has()` on the grid. Every card
+ * stays in the DOM whatever is selected, so a crawler reads the whole feature
+ * set rather than whichever slice happened to be default.
+ */
+function renderFeatureIndex(): string {
+  const cats = FEATURE_CATEGORIES;
+
+  const filters = `<div class="fx-filters" role="group" aria-label="Filter features by area">
+    <input type="radio" name="fx" id="fx-all" value="all" checked>
+    <label for="fx-all">Everything</label>
+    ${cats.map((c, i) => `<input type="radio" name="fx" id="fx-${i}" value="${esc(c)}">
+      <label for="fx-${i}">${esc(c)}</label>`).join('')}
+  </div>`;
+
+  const cards = FEATURES.map((f) => {
+    const cat = cats.indexOf(f.category);
+    return `<article class="fx-card" data-cat="${cat}">
+      <h3>${esc(f.title)}</h3>
+      <p>${esc(f.body)}</p>
+      <div class="fx-tags">
+        <span class="${f.status === 'shipped' ? 'fx-shipped' : 'fx-planned'}">${
+          f.status === 'shipped' ? '● Shipped' : '○ Planned'
+        }</span>
+        ${f.tags.map((t) => `<span class="fx-tag">${esc(t)}</span>`).join('')}
+      </div>
+    </article>`;
+  }).join('');
+
+  // One rule per category: when that radio is checked, hide everything whose
+  // data-cat is not it. Generated rather than hand-written so a new category
+  // cannot be added without its filter working.
+  const rules = cats
+    .map(
+      (_, i) =>
+        `.fx:has(#fx-${i}:checked) .fx-card:not([data-cat="${i}"]){display:none}`,
+    )
+    .join('');
+
+  const planned = FEATURES.length - shippedCount();
+
+  return `<section class="band">
+    <div class="wrap">
+      <div class="fx">
+        <p class="fx-count reveal">${shippedCount()} shipped · ${planned} on the roadmap · everything below is
+          marked either way, because a features page that lists intentions as capabilities is
+          exactly the kind of unsupported promise this product exists to catch.</p>
+        ${filters}
+        <style>${rules}</style>
+        <div class="fx-grid">${cards}</div>
+      </div>
+    </div>
+  </section>`;
+}
+
 function renderGuideIndex(): string {
-  const byCategory = new Map<string, typeof allGuides>();
   const allGuides = guides();
+  const byCategory = new Map<string, MarketingPage[]>();
   for (const guide of allGuides) {
     const key = guide.category ?? 'General';
     byCategory.set(key, [...(byCategory.get(key) ?? []), guide]);
   }
 
   const sections = [...byCategory.entries()]
-    .map(([category, entries]) => `<section class="prose">
-      <h2>${esc(category)}</h2>
-      <ul class="link-list">
-        ${entries.map((g) => `<li>
-          <a href="${esc(pathFor(g.slug))}">${esc(g.h1)}</a>
-          <span>${esc(g.description)}</span>
-        </li>`).join('')}
-      </ul>
+    .map(([category, entries]) => `<section class="band">
+      <div class="wrap">
+        <h2 class="reveal">${esc(category)}</h2>
+        <ul class="link-list reveal">
+          ${entries.map((g) => `<li>
+            <a href="${esc(pathFor(g.slug))}">${esc(g.h1)}</a>
+            <span>${esc(g.description)}</span>
+          </li>`).join('')}
+        </ul>
+      </div>
     </section>`).join('');
 
-  const comparisonList = `<section class="prose">
-    <h2>Comparisons</h2>
-    <ul class="link-list">
-      ${comparisons().map((c) => `<li>
-        <a href="${esc(pathFor(c.slug))}">${esc(c.h1)}</a>
-        <span>${esc(c.description)}</span>
-      </li>`).join('')}
-    </ul>
+  return sections + `<section class="band">
+    <div class="wrap">
+      <h2 class="reveal">Comparisons</h2>
+      <ul class="link-list reveal">
+        ${comparisons().map((c) => `<li>
+          <a href="${esc(pathFor(c.slug))}">${esc(c.h1)}</a>
+          <span>${esc(c.description)}</span>
+        </li>`).join('')}
+      </ul>
+    </div>
   </section>`;
-
-  return sections + comparisonList;
 }
 
 function renderRelated(page: MarketingPage): string {
   if (!page.related?.length) return '';
-  // Resolved lazily so a related slug that stops existing is caught by the
-  // link-integrity test rather than rendering a dead link.
-  return `<nav class="related">
+  return `<div class="wrap"><nav class="related">
     <h2>Related</h2>
     <ul>
       ${page.related.map((slug) => `<li><a href="${esc(pathFor(slug))}">${esc(titleize(slug))}</a></li>`).join('')}
     </ul>
-  </nav>`;
+  </nav></div>`;
 }
 
 function titleize(slug: string): string {
@@ -237,132 +449,193 @@ function titleize(slug: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
+// ── Shell ────────────────────────────────────────────────────────────────────
+
+/** The primary navigation, in one place so header, drawer, and footer agree. */
+const NAV = [
+  { href: '/features', label: 'Features' },
+  { href: '/claims-integrity', label: 'Claims integrity' },
+  { href: '/need-response-intelligence', label: 'NRI' },
+  { href: '/how-it-works', label: 'How it works' },
+  { href: '/pricing', label: 'Pricing' },
+  { href: '/guides', label: 'Guides' },
+];
+
 function renderHeader(): string {
-  return `<header class="site-header">
-    <a class="wordmark" href="/">${esc(SITE.name)}</a>
-    <nav>
-      <a href="/claims-integrity">Claims integrity</a>
-      <a href="/need-response-intelligence">NRI</a>
-      <a href="/how-it-works">How it works</a>
-      <a href="/guides">Guides</a>
-      <a class="btn primary small" href="/app/login">Open the demo</a>
-    </nav>
+  return `<header class="site-header" id="hdr">
+    <div class="hdr">
+      ${logoLockup()}
+      <nav class="hdr-nav" aria-label="Primary">
+        ${NAV.map((n) => `<a href="${n.href}">${esc(n.label)}</a>`).join('')}
+        <a class="btn primary small hdr-cta" href="/app/login">Open the demo</a>
+      </nav>
+      <button class="navtoggle" type="button" aria-label="Open menu" aria-expanded="false"
+        aria-controls="drawer" data-open-drawer>
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.7"
+            stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
   </header>`;
+}
+
+/**
+ * The mobile drawer.
+ *
+ * Rendered into the document rather than created by script, so its links are in
+ * the markup a crawler sees and so it costs nothing to open. `data-open` is the
+ * only thing the script toggles.
+ */
+function renderDrawer(): string {
+  return `<div class="drawer" id="drawer" data-open="false">
+    <div class="drawer-scrim" data-close-drawer></div>
+    <nav class="drawer-panel" aria-label="Mobile">
+      <div class="drawer-top">
+        ${logoLockup()}
+        <button class="drawer-close" type="button" aria-label="Close menu" data-close-drawer>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+            <path d="M4 4l10 10M14 4L4 14" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <p class="drawer-label">Product</p>
+      ${NAV.map((n) => `<a href="${n.href}">${esc(n.label)}</a>`).join('')}
+      <p class="drawer-label">Company</p>
+      <a href="/security">Security</a>
+      <a href="/about">About</a>
+      <a href="/faq">FAQ</a>
+      <a class="btn primary" href="/app/login">Open the demo</a>
+    </nav>
+  </div>`;
 }
 
 function renderFooter(): string {
   return `<footer class="site-footer">
-    <p><strong>${esc(SITE.name)}</strong> — ${esc(SITE.tagline)}</p>
-    <nav>
-      <a href="/claims-integrity">Claims integrity</a>
-      <a href="/need-response-intelligence">Need Response Intelligence</a>
-      <a href="/how-it-works">How it works</a>
-      <a href="/guides">Guides</a>
-      <a href="/llms.txt">llms.txt</a>
-    </nav>
-    <p class="disclaimer">
-      Auxilium is software for health care sharing ministries. It is not insurance, not a health
-      plan, and not a compliance certification. Health care sharing ministries are exempt from
-      state insurance regulation; no software changes that.
-    </p>
+    <div class="foot">
+      <div class="foot-brand">
+        ${logoLockup()}
+        <p>${esc(SITE.tagline)}</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul>
+          <li><a href="/features">Features</a></li>
+          <li><a href="/claims-integrity">Claims integrity</a></li>
+          <li><a href="/need-response-intelligence">Need Response Intelligence</a></li>
+          <li><a href="/how-it-works">How it works</a></li>
+          <li><a href="/pricing">Pricing</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Learn</h4>
+        <ul>
+          <li><a href="/guides">Guides</a></li>
+          <li><a href="/compare/spreadsheets">vs. spreadsheets</a></li>
+          <li><a href="/compare/generic-crm">vs. a generic CRM</a></li>
+          <li><a href="/compare/legacy-administration-systems">vs. legacy platforms</a></li>
+          <li><a href="/faq">FAQ</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul>
+          <li><a href="/about">About</a></li>
+          <li><a href="/security">Security</a></li>
+          <li><a href="/who-its-for">Who it is for</a></li>
+          <li><a href="/llms.txt">llms.txt</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot-base">
+      <p class="disclaimer">
+        Auxilium is software for health care sharing ministries. It is not insurance, not a health
+        plan, and not a compliance certification. Health care sharing ministries are exempt from
+        state insurance regulation; no software changes that.
+      </p>
+    </div>
   </footer>`;
 }
 
 /**
- * Inlined stylesheet.
+ * The whole client-side runtime.
  *
- * Same sober palette as the application — slate ground, one deep teal. This is
- * software people open on the worst day of a family's year, and the marketing
- * site should not promise a different product than the one they get.
+ * Three jobs and nothing else: arm the reveal animations, run the drawer, and
+ * shade the header once the page has scrolled. It adds `.js` to <html> as its
+ * first act — that class is what makes `.reveal` start hidden, so if this
+ * script never runs, never parses, or is blocked, the page is simply fully
+ * visible rather than blank.
  */
-const STYLES = `
-:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b949e;--line:#21262d;--card:#161b22;
---primary:#2aa19a;--primary-fg:#04191c;--warn:#d29922;--bad:#f85149;--good:#3fb950;--radius:8px}
-@media(prefers-color-scheme:light){:root{--bg:#fbfcfd;--fg:#1c2128;--muted:#57606a;--line:#d8dee4;
---card:#fff;--primary:#12706b;--primary-fg:#fff}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);
-font:16px/1.65 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
--webkit-font-smoothing:antialiased}
-a{color:var(--primary)}
-main{max-width:820px;margin:0 auto;padding:0 20px 72px}
-.site-header{max-width:1100px;margin:0 auto;padding:18px 20px;display:flex;flex-wrap:wrap;gap:12px;
-align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
-.wordmark{font-weight:650;font-size:18px;text-decoration:none;color:var(--fg);letter-spacing:-.01em}
-.site-header nav{display:flex;flex-wrap:wrap;gap:18px;align-items:center}
-.site-header nav a{color:var(--muted);text-decoration:none;font-size:14px}
-.site-header nav a:hover{color:var(--fg)}
-.page-title{font-size:clamp(28px,5vw,42px);line-height:1.15;letter-spacing:-.02em;margin:48px 0 18px}
-.kicker{text-transform:uppercase;letter-spacing:.09em;font-size:12px;color:var(--muted);margin:0 0 6px}
-.hero-sub{font-size:19px;color:var(--muted);margin:0 0 24px;max-width:62ch}
-.actions{display:flex;flex-wrap:wrap;gap:10px;margin:22px 0 0}
-.btn{display:inline-block;padding:10px 18px;border-radius:var(--radius);text-decoration:none;
-font-weight:550;font-size:15px;border:1px solid transparent}
-.btn.primary{background:var(--primary);color:var(--primary-fg)}
-.btn.secondary{border-color:var(--line);color:var(--fg)}
-.btn.small{padding:7px 13px;font-size:14px}
-h2{font-size:23px;letter-spacing:-.01em;margin:44px 0 12px;line-height:1.3}
-h3{font-size:16px;margin:0 0 7px}
-p{margin:0 0 15px;max-width:70ch}
-.intro{color:var(--muted);max-width:66ch}
-.stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin:32px 0}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
-.stat-value{font-size:30px;font-weight:640;margin:0;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.stat-label{color:var(--muted);font-size:14px;margin:4px 0 0}
-.source{display:inline-block;margin-top:7px;font-size:11px;color:var(--muted)}
-.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px;margin-top:18px}
-.feature{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
-.feature p{font-size:15px;margin-bottom:0}
-.prevents{margin-top:11px;padding-top:11px;border-top:1px solid var(--line);
-font-size:13px;color:var(--muted)}
-.prevents span{color:var(--warn);font-weight:550}
-.table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);margin-top:16px}
-table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
-th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:550}
-tr:last-child td{border-bottom:0}
-.mark{text-align:center;font-weight:650;width:96px}
-.mark.yes{color:var(--good)}.mark.partial{color:var(--warn)}.mark.no{color:var(--bad)}
-.note{color:var(--muted);font-size:13px}
-.callout{border-left:3px solid var(--primary);background:var(--card);padding:16px 18px;
-border-radius:0 var(--radius) var(--radius) 0;margin:28px 0}
-.callout.caution{border-left-color:var(--warn)}
-.callout-heading{font-weight:600;margin:0 0 6px}
-.callout p:last-child{margin-bottom:0;color:var(--muted)}
-details{border:1px solid var(--line);border-radius:var(--radius);padding:13px 16px;margin-bottom:9px;
-background:var(--card)}
-summary{cursor:pointer;font-weight:550}
-details p{margin:11px 0 0;color:var(--muted)}
-.cta-block{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-padding:26px;margin:46px 0 0;text-align:center}
-.cta-block h2{margin-top:0}
-.cta-block p{margin-left:auto;margin-right:auto;color:var(--muted)}
-.cta-block .actions{justify-content:center}
-.link-list{list-style:none;padding:0;margin:0}
-.link-list li{padding:13px 0;border-bottom:1px solid var(--line)}
-.link-list li:last-child{border-bottom:0}
-.link-list a{font-weight:550;text-decoration:none;display:block}
-.link-list span{display:block;color:var(--muted);font-size:14px;margin-top:3px}
-.related{margin-top:52px;padding-top:22px;border-top:1px solid var(--line)}
-.related h2{margin-top:0;font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
-.related ul{list-style:none;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:8px}
-.related a{display:inline-block;padding:6px 12px;border:1px solid var(--line);
-border-radius:99px;text-decoration:none;font-size:14px}
-.quote blockquote{margin:0;font-size:18px;font-style:italic}
-.quote figcaption{color:var(--muted);font-size:14px;margin-top:8px}
-.site-footer{border-top:1px solid var(--line);margin-top:64px;padding:28px 20px 48px;
-max-width:1100px;margin-left:auto;margin-right:auto;color:var(--muted);font-size:14px}
-.site-footer nav{display:flex;flex-wrap:wrap;gap:16px;margin:10px 0 16px}
-.site-footer a{color:var(--muted)}
-.disclaimer{font-size:12px;max-width:78ch;line-height:1.6}
-`;
+const SCRIPT = `
+(function(){
+  var d=document, r=d.documentElement;
+  r.className+=' js';
+
+  // Reveal on scroll. Anything still off-screen when the observer is
+  // unavailable is shown immediately rather than left hidden.
+  var els=d.querySelectorAll('.reveal');
+  if(!('IntersectionObserver' in window)){
+    for(var i=0;i<els.length;i++) els[i].classList.add('in');
+  } else {
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    },{rootMargin:'0px 0px -8% 0px',threshold:.06});
+    els.forEach(function(el){ io.observe(el); });
+
+    // Failsafe. Adding .js is what makes .reveal start hidden, so any situation
+    // where the observer never delivers — a headless renderer that does not
+    // paint, an aggressive extension, a bug in a browser we have not tested —
+    // would otherwise leave the page permanently blank. After two seconds,
+    // everything is shown regardless. A missed animation is a rounding error;
+    // invisible content is the whole site.
+    setTimeout(function(){
+      for(var j=0;j<els.length;j++) els[j].classList.add('in');
+    },2000);
+  }
+
+  // Header shade.
+  var hdr=d.getElementById('hdr');
+  if(hdr){
+    var onScroll=function(){ hdr.classList.toggle('stuck', window.scrollY>8); };
+    onScroll();
+    window.addEventListener('scroll',onScroll,{passive:true});
+  }
+
+  // Drawer. Focus moves in on open and back to the trigger on close, and Escape
+  // closes — the three things a hand-rolled menu usually gets wrong.
+  var drawer=d.getElementById('drawer'), trigger=d.querySelector('[data-open-drawer]');
+  function setDrawer(open){
+    if(!drawer) return;
+    drawer.setAttribute('data-open', open?'true':'false');
+    if(trigger) trigger.setAttribute('aria-expanded', open?'true':'false');
+    d.body.style.overflow = open?'hidden':'';
+    if(open){ var f=drawer.querySelector('a,button'); if(f) f.focus(); }
+    else if(trigger) trigger.focus();
+  }
+  if(trigger) trigger.addEventListener('click',function(){ setDrawer(true); });
+  d.querySelectorAll('[data-close-drawer]').forEach(function(el){
+    el.addEventListener('click',function(){ setDrawer(false); });
+  });
+  if(drawer){
+    drawer.querySelectorAll('a').forEach(function(a){
+      a.addEventListener('click',function(){ setDrawer(false); });
+    });
+  }
+  d.addEventListener('keydown',function(e){
+    if(e.key==='Escape' && drawer && drawer.getAttribute('data-open')==='true') setDrawer(false);
+  });
+})();
+`.trim();
 
 /**
  * The public 404.
  *
- * Deliberately a real page rather than the SPA shell: a visitor who mistyped a
- * URL should be told so and handed somewhere useful, and a crawler should get
- * an honest status code.
+ * A real page rather than the SPA shell: a visitor who mistyped a URL should be
+ * told so and handed somewhere useful, and a crawler should get an honest
+ * status code.
  */
 export function renderNotFound(): string {
   return `<!doctype html>
@@ -372,27 +645,32 @@ export function renderNotFound(): string {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Page not found — ${esc(SITE.name)}</title>
     <meta name="robots" content="noindex">
+    <link rel="icon" href="${faviconDataUri()}">
     <style>${STYLES}</style>
   </head>
   <body>
     ${renderHeader()}
+    ${renderDrawer()}
     <main id="main">
-      <h1 class="page-title">That page does not exist</h1>
-      <section class="prose">
-        <p>The link may be out of date, or the address may have a typo in it.</p>
+      <section class="hero">
+        <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="wrap hero-inner">
+          <div class="hero-copy">
+            <p class="eyebrow">404</p>
+            <h1 class="page-title">That page does not exist</h1>
+            <p class="lead">The link may be out of date, or the address may have a typo in it.</p>
+            <p class="actions">
+              <a class="btn primary" href="/">Back to the start<span class="arr">→</span></a>
+              <a class="btn secondary" href="/features">See every feature<span class="arr">→</span></a>
+            </p>
+          </div>
+        </div>
       </section>
-      <nav class="related">
-        <h2>Try one of these</h2>
-        <ul>
-          <li><a href="/">Home</a></li>
-          <li><a href="/claims-integrity">Claims integrity</a></li>
-          <li><a href="/need-response-intelligence">Need Response Intelligence</a></li>
-          <li><a href="/how-it-works">How it works</a></li>
-          <li><a href="/guides">Guides</a></li>
-        </ul>
-      </nav>
     </main>
     ${renderFooter()}
+    <script>${SCRIPT}</script>
   </body>
 </html>`;
 }
+
+export { logoMark, browserFrame };

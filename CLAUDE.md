@@ -403,11 +403,49 @@ appeal.
 
 Auxilium's public site is **server-rendered from the Worker**, not the SPA.
 `src/content/` holds a typed registry of pages; `workers/marketing/` renders it
-to HTML with no client JavaScript at all.
+to HTML.
 
 That is deliberate. These pages exist to be read by search crawlers and by
 assistants summarizing this category, and both do markedly better with real
 HTML than with an app that paints itself after a bundle loads.
+
+### The rule about JavaScript
+
+This used to ship literally zero. It now ships about a kilobyte, inline, for two
+things HTML cannot do: a mobile drawer with correct focus and Escape handling,
+and scroll-reveal animation.
+
+The rule that replaced "no JavaScript" is stricter and more useful: **the page
+is complete without it.** Reveal animations are armed by a `.js` class the
+script adds to `<html>`, so if the script is blocked, fails, or has not parsed
+yet, every element renders exactly as authored — visible. There is a 2-second
+failsafe that reveals everything regardless, because an animation that does not
+play is a rounding error and content stuck at `opacity: 0` is the whole site.
+Nothing is hydrated, nothing is fetched, and no content exists only in
+JavaScript.
+
+The feature filter on `/features` is **CSS-only** — radio inputs plus `:has()`.
+Every card stays in the DOM whatever is selected, so a crawler reads the full
+feature set rather than whichever slice was default.
+
+### Files
+
+| | |
+|---|---|
+| `workers/marketing/brand.ts` | The compass logo, palette, type, motion keyframes |
+| `workers/marketing/styles.ts` | Component CSS, split from the tokens |
+| `workers/marketing/mockups.ts` | Product replicas in a chromeless browser frame |
+| `workers/marketing/render.ts` | Blocks → HTML, the shell, and the inline script |
+| `src/content/features.ts` | Every feature, categorised and tagged |
+
+**The mockups are HTML, not screenshots and not React.** They are replicas of
+the real screens built from the same tokens. That buys four things worth more
+here than pixel fidelity: they are real text a crawler and an assistant can
+read, they reflow on a phone where a dashboard screenshot is unreadable, they
+follow the visitor's light/dark preference, and they cost a few kilobytes
+instead of a few hundred. They also cannot go stale against a redesign the way
+a PNG does. The data in them is the demo ministry's, so what a visitor sees is
+what they get when they click through.
 
 ### Routing
 
@@ -428,10 +466,14 @@ the app keeps working unchanged.
 
 ### Adding a page
 
-Add it to `src/content/pages.ts`, `guides.ts`, or `comparisons.ts`, then export
-it through `registry.ts`. The sitemap, `llms.txt`, and the guides index all
-derive from that registry, so they cannot go stale and a page cannot ship
-orphaned.
+Add it to `src/content/pages.ts`, `pages-more.ts`, `guides.ts`, or
+`comparisons.ts`, then export it through `registry.ts`. The sitemap,
+`llms.txt`, and the guides index all derive from that registry, so they cannot
+go stale and a page cannot ship orphaned.
+
+Nineteen pages currently: home, features, pricing, who-its-for, security,
+about, FAQ, claims integrity, NRI, how it works, the guides index, five guides,
+and three comparisons.
 
 ### What the tests enforce
 
@@ -449,6 +491,14 @@ orphaned.
   `ACA_MLR_INDIVIDUAL_BPS`. Change the benchmark in the scoring code and the
   content tests fail until the copy is updated to match.
 - no claim of preventing fraud or guaranteeing compliance
+- **every feature carrying a `shipped` or `planned` status**, and at least one
+  still marked planned — if that ever reaches zero it is far likelier that
+  somebody relabelled the roadmap than that everything shipped at once
+- every photograph carrying real alt text and a `/img/` path
+- no mockup referencing a kind the renderer cannot draw
+- **no invented price.** Pricing is a business decision; a currency figure in
+  the content would be a fabrication presented as fact, so a tier may describe
+  what it includes but may not state an amount until real numbers exist.
 
 ### Two editorial rules
 

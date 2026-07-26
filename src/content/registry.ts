@@ -1,5 +1,6 @@
 import type { MarketingPage } from './types';
 import { CORE_PAGES } from './pages';
+import { MORE_PAGES } from './pages-more';
 import { GUIDES } from './guides';
 import { COMPARISONS } from './comparisons';
 
@@ -36,6 +37,7 @@ const guidesIndex: MarketingPage = {
 
 export const ALL_PAGES: MarketingPage[] = [
   ...CORE_PAGES,
+  ...MORE_PAGES,
   guidesIndex,
   ...GUIDES,
   ...COMPARISONS,
@@ -68,9 +70,14 @@ export function internalLinks(page: MarketingPage): string[] {
   const links: string[] = [];
 
   for (const block of page.blocks) {
-    if (block.type === 'hero' || block.type === 'cta') {
+    if (block.type === 'hero' || block.type === 'cta' || block.type === 'split') {
       if (block.cta) links.push(block.cta.href);
       if ('secondaryCta' in block && block.secondaryCta) links.push(block.secondaryCta.href);
+    }
+    // Pricing tiers each carry their own call to action, and a dead link on the
+    // pricing page is the most expensive dead link on the site.
+    if (block.type === 'pricing') {
+      for (const tier of block.tiers) links.push(tier.cta.href);
     }
   }
 

@@ -19,8 +19,43 @@
  *      against a prospective customer.
  */
 
+/** Which product replica to render. See workers/marketing/mockups.ts. */
+export type MockupKind = 'triage' | 'compass' | 'integrity' | 'import' | 'claims';
+
 export type Block =
-  | { type: 'hero'; heading: string; subheading: string; cta?: Cta; secondaryCta?: Cta; kicker?: string }
+  | {
+      type: 'hero';
+      heading: string;
+      subheading: string;
+      cta?: Cta;
+      secondaryCta?: Cta;
+      kicker?: string;
+      /** Photograph beside the copy. Omit for a centred, text-only hero. */
+      photo?: Photo;
+      /** Product replica beside the copy, when a screen says it better than a picture. */
+      mockup?: MockupKind;
+      /** Short reassurance items under the buttons. */
+      trust?: string[];
+    }
+  | {
+      /** Copy on one side, a product replica or photograph on the other. */
+      type: 'split';
+      eyebrow?: string;
+      heading: string;
+      paragraphs: string[];
+      bullets?: string[];
+      mockup?: MockupKind;
+      photo?: Photo;
+      cta?: Cta;
+      /** Put the visual on the left instead of the right. */
+      flip?: boolean;
+    }
+  | { type: 'mockup'; kind: MockupKind; heading?: string; caption?: string }
+  | { type: 'photo'; photo: Photo }
+  | { type: 'steps'; heading: string; intro?: string; steps: Step[] }
+  /** The full feature index, rendered from src/content/features.ts. */
+  | { type: 'featureIndex' }
+  | { type: 'pricing'; heading: string; intro?: string; tiers: PricingTier[]; footnote?: string }
   | { type: 'stat'; value: string; label: string; source?: Source }
   | { type: 'statRow'; stats: { value: string; label: string; source?: Source }[] }
   | { type: 'prose'; heading?: string; paragraphs: string[] }
@@ -34,6 +69,34 @@ export type Block =
 export interface Cta {
   label: string;
   href: string;
+}
+
+/**
+ * A photograph.
+ *
+ * `alt` is required rather than optional, because a decorative-by-default image
+ * is how alt text quietly stops existing. If an image really is decorative,
+ * pass an empty string deliberately.
+ */
+export interface Photo {
+  src: string;
+  alt: string;
+  caption?: string;
+}
+
+export interface Step {
+  title: string;
+  body: string;
+}
+
+export interface PricingTier {
+  name: string;
+  forWho: string;
+  /** Deliberately not a number. See the note on the pricing page. */
+  priceNote: string;
+  includes: string[];
+  cta: Cta;
+  featured?: boolean;
 }
 
 /** A citation. Every factual claim about the category carries one. */

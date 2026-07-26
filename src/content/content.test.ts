@@ -3,6 +3,7 @@ import { ALL_PAGES, pageBySlug, pathFor, guides, comparisons, internalLinks } fr
 import { marketingMeta, structuredData, SITE } from './meta';
 import { ACA_MLR_INDIVIDUAL_BPS, ACA_MLR_LARGE_GROUP_BPS } from '../lib/integrity/types';
 import { formatBps } from '../lib/integrity/mlr';
+import { FEATURES, FEATURE_CATEGORIES, featuresByCategory } from './features';
 
 /**
  * Content integrity tests.
@@ -291,5 +292,116 @@ describe('metadata and structured data', () => {
     const items = crumbs!.itemListElement as { position: number; item: string }[];
     expect(items[0].item).toBe(ORIGIN);
     expect(items[items.length - 1].item).toBe(`${ORIGIN}/${guide.slug}`);
+  });
+});
+
+/**
+ * The feature registry.
+ *
+ * The features page is the one place where the temptation to overstate is
+ * strongest — it is a list whose length is itself a sales argument. These tests
+ * exist so that pressure has to go through a failing build.
+ */
+describe('the feature registry', () => {
+  it('gives every feature a category the page can group it under', () => {
+    for (const f of FEATURES) {
+      expect(FEATURE_CATEGORIES, `"${f.title}" has an unknown category`).toContain(f.category);
+    }
+  });
+
+  it('tags every feature, so nothing is unfindable by filter', () => {
+    for (const f of FEATURES) {
+      expect(f.tags.length, `"${f.title}" has no tags`).toBeGreaterThan(0);
+    }
+  });
+
+  it('states a status for every feature rather than leaving it implied', () => {
+    for (const f of FEATURES) {
+      expect(['shipped', 'planned']).toContain(f.status);
+    }
+  });
+
+  it('actually has unbuilt things marked planned', () => {
+    // If this ever reaches zero it is far more likely that someone quietly
+    // relabelled the roadmap than that everything shipped at once.
+    const planned = FEATURES.filter((f) => f.status === 'planned');
+    expect(planned.length).toBeGreaterThan(0);
+  });
+
+  it('describes every feature in enough depth to be judged', () => {
+    for (const f of FEATURES) {
+      expect(f.body.length, `"${f.title}" is a stub`).toBeGreaterThan(80);
+    }
+  });
+
+  it('does not claim to prevent fraud or guarantee compliance', () => {
+    const forbidden = [/prevents? fraud/i, /guarantees? compliance/i, /makes? you compliant/i];
+    for (const f of FEATURES) {
+      for (const pattern of forbidden) {
+        expect(pattern.test(f.body), `"${f.title}" overclaims`).toBe(false);
+      }
+    }
+  });
+
+  it('has no duplicate titles', () => {
+    const titles = FEATURES.map((f) => f.title);
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+
+  it('covers every category with at least one feature', () => {
+    for (const c of FEATURE_CATEGORIES) {
+      expect(featuresByCategory(c).length, `${c} is an empty category`).toBeGreaterThan(0);
+    }
+  });
+});
+
+/**
+ * The visual layer.
+ *
+ * Blocks that carry imagery or product replicas can fail in ways prose cannot:
+ * a missing alt attribute, a mockup kind the renderer has no case for, an image
+ * path that does not exist in the build.
+ */
+describe('visual blocks', () => {
+  const MOCKUP_KINDS = ['triage', 'compass', 'integrity', 'import', 'claims'];
+
+  it('gives every photograph real alt text', () => {
+    for (const page of ALL_PAGES) {
+      for (const block of page.blocks) {
+        const photo =
+          block.type === 'photo' ? block.photo
+          : (block.type === 'hero' || block.type === 'split') ? block.photo
+          : undefined;
+        if (!photo) continue;
+        expect(photo.alt.length, `${page.slug || 'home'} has an unlabelled image`).toBeGreaterThan(10);
+        expect(photo.src.startsWith('/img/'), `${page.slug || 'home'} image path`).toBe(true);
+      }
+    }
+  });
+
+  it('only references mockups the renderer can draw', () => {
+    for (const page of ALL_PAGES) {
+      for (const block of page.blocks) {
+        const kind =
+          block.type === 'mockup' ? block.kind
+          : (block.type === 'hero' || block.type === 'split') ? block.mockup
+          : undefined;
+        if (!kind) continue;
+        expect(MOCKUP_KINDS, `${page.slug || 'home'} wants an unknown mockup`).toContain(kind);
+      }
+    }
+  });
+
+  it('never prices a tier with a number nobody has agreed to', () => {
+    // Pricing is a business decision, not a content one. Until real figures
+    // exist, a currency amount here would be an invention presented as fact.
+    for (const page of ALL_PAGES) {
+      for (const block of page.blocks) {
+        if (block.type !== 'pricing') continue;
+        for (const tier of block.tiers) {
+          expect(/[$£€]\s?\d/.test(tier.priceNote), `${tier.name} invents a price`).toBe(false);
+        }
+      }
+    }
   });
 });

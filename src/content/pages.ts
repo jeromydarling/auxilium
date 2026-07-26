@@ -75,6 +75,16 @@ const home: MarketingPage = {
         'benchmark — and makes sure no member goes quiet without anyone noticing.',
       cta: { label: 'See the demo ministry', href: '/app/login' },
       secondaryCta: { label: 'How claims integrity works', href: '/claims-integrity' },
+      photo: {
+        src: '/img/hero-kitchen.webp',
+        alt: 'A woman at a kitchen table in morning light, working through a stack of medical bills.',
+        caption: 'This is the moment the whole product is about.',
+      },
+      trust: [
+        'Every score explainable by hand',
+        'Nothing imported until you commit',
+        'No card to open the demo',
+      ],
     },
     {
       type: 'prose',
@@ -147,6 +157,86 @@ const home: MarketingPage = {
             'the ministry could not produce patient names, procedures, dates, or account numbers.',
         },
       ],
+    },
+    {
+      type: 'split',
+      eyebrow: 'Financial integrity',
+      heading: 'Answer the money question on a Tuesday, not in six weeks',
+      paragraphs: [
+        'Of every dollar members contributed, how many cents reached their medical costs? The ' +
+        'ratio is computed continuously and measured against a floor sharing ministries are ' +
+        'exempt from — which is exactly what makes clearing it worth something.',
+        'A month with contributions and no distributions is the loudest signal this system ' +
+        'produces, so the query is built to make that month impossible to lose.',
+      ],
+      bullets: [
+        'Contributions and disbursements on one timeline',
+        'Related-party payments broken out and disclosed separately',
+        'An opt-in public page with no member data in it',
+      ],
+      mockup: 'integrity',
+      cta: { label: 'How the share ratio works', href: '/guides/share-ratio-explained' },
+    },
+    {
+      type: 'split',
+      eyebrow: 'Need Response Intelligence',
+      heading: 'A score you can add up by hand, and argue with',
+      paragraphs: [
+        'Four directions, scored separately, because a member can carry several at once. High ' +
+        'Onus with low Cura is a billing problem. High Onus and high Cura is a family in crisis.',
+        'There is no model and no learned coefficient anywhere in the calculation. A score is the ' +
+        'sum of the rules that matched, shown with their exact weights — because a system that ' +
+        'cannot be argued with does not get trusted with pastoral care.',
+      ],
+      bullets: [
+        'Ties break toward Cura — the hurting person outranks the expensive case',
+        'A dismissed signal returns when the facts get materially worse',
+        'The full rule set is published to administrators as a product page',
+      ],
+      mockup: 'compass',
+      flip: true,
+      cta: { label: 'How the scoring works', href: '/need-response-intelligence' },
+    },
+    {
+      type: 'steps',
+      heading: 'From a nine-year-old spreadsheet to a working board',
+      intro:
+        'The first hour is usually the part ministries dread most. It is designed to be the part ' +
+        'that goes well.',
+      steps: [
+        {
+          title: 'Upload whatever you have',
+          body:
+            'Byte-order marks, mixed date formats, embedded newlines, ragged rows, a column called ' +
+            '"Mbr #". The parser was written for real exports rather than clean ones.',
+        },
+        {
+          title: 'Look at the preview',
+          body:
+            'Columns map themselves, duplicates are matched without fuzzy name guessing, and ' +
+            'nothing at all is written to your members until you commit.',
+        },
+        {
+          title: 'Commit when it looks right',
+          body:
+            'Matched members are updated rather than duplicated. A blank cell means "not ' +
+            'provided", never "delete what you know".',
+        },
+        {
+          title: 'The board is already populated',
+          body:
+            'Scoring runs as soon as members exist, so the first thing you see is who needs ' +
+            'attention — not an empty state asking you to configure something.',
+        },
+      ],
+    },
+    {
+      type: 'mockup',
+      kind: 'import',
+      heading: 'The preview that stands between a messy file and your roster',
+      caption:
+        'Real output from the demo import: 11 of 11 columns inferred, an in-file duplicate ' +
+        'skipped, an existing member matched by email and updated rather than duplicated.',
     },
     {
       type: 'callout',
