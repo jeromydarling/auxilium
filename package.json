@@ -22,6 +22,8 @@
     "db:seed:remote": "wrangler d1 execute auxilium-db-dev --remote --file=./schema/seed-reset.sql && wrangler d1 execute auxilium-db-dev --remote --file=./schema/seed.sql && wrangler d1 execute auxilium-db-dev --remote --file=./schema/seed-integrity.sql && wrangler d1 execute auxilium-db-dev --remote --file=./schema/seed-portal.sql",
     "db:reset:local": "rm -rf .wrangler/state/v3/d1 && bun run db:migrate:local && bun run db:seed:local",
     "db:studio:local": "wrangler d1 execute auxilium-db-dev --local --command",
+    "db:backup:prod": "wrangler d1 export auxilium-db-prod --remote --env production --output ./backup-$(date +%Y-%m-%d).sql",
+    "db:verify-backup": "./scripts/verify-backup.sh",
     "cf:setup": "bash ./scripts/cloudflare-setup.sh",
     "deploy:preview": "bun run build && wrangler deploy --env preview",
     "deploy:production": "bun run build && wrangler deploy --env production"

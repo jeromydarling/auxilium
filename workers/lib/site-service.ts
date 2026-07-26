@@ -20,10 +20,65 @@ export interface SiteRecord {
     id: string; name: string; slug: string; published_at: string | null;
     /** Set only when the domain has been verified — a claim is not an address. */
     custom_domain: string | null;
+    /**
+     * True for the seeded demonstration ministries.
+     *
+     * Carried all the way to the renderer because these sites are publicly
+     * reachable by design — a live thing to show a prospect is worth more than
+     * a screenshot — and one of them deliberately reproduces documented
+     * misconduct at a 16% share ratio. A visitor who cannot tell that from a
+     * real customer has been misled by us, not by the ministry.
+     */
+    demo: boolean;
   };
   brand: ResolvedBrand;
   pages: SitePage[];
   ctx: SiteContext;
+}
+
+/**
+ * How long "there is no published site at this slug" is remembered.
+ *
+ * The same negative-caching argument as the host lookup: `/{slug}` is reached
+ * only after the content registry misses, so any slug-shaped path an attacker
+ * invents costs one database read. Shape-guarding stops `/x` and `/../..`; it
+ * does not stop `/aaaa`, and the whole attack is misses.
+ *
+ * A minute, because this is on the path to a ministry's site going live and a
+ * longer memory of "not found" is a support ticket.
+ */
+const MISS_CACHE_SECONDS = 60;
+
+/** Slugs known to have no published site. Cleared when a site is published. */
+async function knownMiss(env: Env, slug: string): Promise<boolean> {
+  try {
+    return (await env.CACHE.get(`site-miss:${slug}`)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+async function rememberMiss(env: Env, slug: string): Promise<void> {
+  try {
+    await env.CACHE.put(`site-miss:${slug}`, '1', { expirationTtl: MISS_CACHE_SECONDS });
+  } catch {
+    // Not caching is slow, not wrong.
+  }
+}
+
+/**
+ * Forget a cached miss.
+ *
+ * Called when a site is published or its address changes, so a ministry that has
+ * just clicked publish does not spend a minute looking at Auxilium's 404 on its
+ * own address — which reads as the publish button not having worked.
+ */
+export async function forgetSiteMiss(env: Env, slug: string): Promise<void> {
+  try {
+    await env.CACHE.delete(`site-miss:${slug}`);
+  } catch {
+    // The TTL clears it shortly regardless.
+  }
 }
 
 /**
@@ -38,27 +93,40 @@ export async function loadSite(
   orgSlugOrId: { slug: string } | { id: string },
   opts: { published: boolean },
 ): Promise<SiteRecord | null> {
+  // Only the public path benefits, and only it may be served stale. The editor
+  // always reads through, because a ministry looking at its own draft must never
+  // be told it has no site.
+  if (opts.published && 'slug' in orgSlugOrId && (await knownMiss(env, orgSlugOrId.slug))) {
+    return null;
+  }
+
   const org = 'slug' in orgSlugOrId
     ? await first<OrgRow>(
         env.DB,
-        `SELECT id, name, slug, brand, site_published_at, governing_version_rule,
+        `SELECT id, name, slug, brand, kind, site_published_at, governing_version_rule,
                 custom_domain, custom_domain_verified_at
            FROM organizations WHERE slug = ? AND deleted_at IS NULL`,
         orgSlugOrId.slug,
       )
     : await first<OrgRow>(
         env.DB,
-        `SELECT id, name, slug, brand, site_published_at, governing_version_rule,
+        `SELECT id, name, slug, brand, kind, site_published_at, governing_version_rule,
                 custom_domain, custom_domain_verified_at
            FROM organizations WHERE id = ? AND deleted_at IS NULL`,
         orgSlugOrId.id,
       );
-  if (!org) return null;
+  if (!org) {
+    if (opts.published && 'slug' in orgSlugOrId) await rememberMiss(env, orgSlugOrId.slug);
+    return null;
+  }
 
   // A site is published as a whole. Without this the moment a ministry's first
   // page reached 'published' its public address started answering — with one
   // page and no navigation. Nobody decided to launch; the schema did.
-  if (opts.published && !org.site_published_at) return null;
+  if (opts.published && !org.site_published_at) {
+    await rememberMiss(env, org.slug);
+    return null;
+  }
 
   const rows = await all<PageRow>(
     env.DB,
@@ -82,6 +150,7 @@ export async function loadSite(
       // the sitemap, routing — treats this as the ministry's real address, and
       // an unverified claim must not be able to reach any of them.
       custom_domain: org.custom_domain_verified_at ? org.custom_domain : null,
+      demo: org.kind === 'demo',
     },
     brand: resolveBrand(json<Partial<BrandIntent>>(org.brand, {})),
     pages,
@@ -94,6 +163,7 @@ interface OrgRow {
   name: string;
   slug: string;
   brand: string;
+  kind: string;
   site_published_at: string | null;
   governing_version_rule: string;
   custom_domain: string | null;
@@ -136,9 +206,17 @@ async function siteContext(env: Env, org: OrgRow): Promise<SiteContext> {
     ),
   ]);
 
+  // Publishing where a ministry's money went is its decision, and the same
+  // decision the public transparency endpoint reads. One flag, both surfaces:
+  // a product that argues for consent-based disclosure cannot have one surface
+  // asking and the other assuming.
+  const publishes = json<{ publish_share_ratio?: boolean }>(org.brand, {}).publish_share_ratio === true;
+  const ratio = publishedRatio(facts.ledger);
+
   return {
     ministryName: org.name,
-    shareRatio: publishedRatio(facts.ledger),
+    shareRatio: publishes ? ratio : undefined,
+    shareRatioGap: ratio && !publishes ? 'not_published' : ratio ? undefined : 'no_ledger',
     guidelines: guidelines.length
       ? guidelines.map((g) => ({
           version: g.version,

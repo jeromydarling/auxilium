@@ -42,6 +42,36 @@ import { handleSignalBatch } from './queues/signals';
 const app = new Hono<AppEnv>();
 
 /**
+ * A ceiling on request bodies.
+ *
+ * 256KB is far more than any endpoint here legitimately needs — the largest is a
+ * CSV upload, which goes to R2 through its own path with `IMPORT_MAX_ROWS` on
+ * top. Without this, `c.req.json()` parses whatever arrives before any handler
+ * gets a say, so a 50MB POST to the public application form costs real CPU
+ * before the first line of validation runs.
+ *
+ * Checked on Content-Length rather than by reading the stream: a body we have
+ * decided not to accept should not be buffered in order to measure it. A request
+ * that omits the header entirely is let through — a chunked upload is legitimate
+ * and Workers caps the body anyway — because refusing on a missing header would
+ * break clients that are behaving correctly.
+ */
+const MAX_BODY_BYTES = 256 * 1024;
+
+app.use('*', async (c, next) => {
+  if (c.req.method === 'GET' || c.req.method === 'HEAD') return next();
+
+  const declared = Number(c.req.header('content-length') ?? '');
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    return c.json(
+      { error: 'That request is too large. If you are uploading a roster, use the import screen.' },
+      413,
+    );
+  }
+  return next();
+});
+
+/**
  * Custom domains, checked before anything else.
  *
  * A request that arrived on a ministry's own verified domain is that ministry's

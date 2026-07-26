@@ -29,7 +29,7 @@ import {
  */
 
 export interface MinistrySite {
-  org: { name: string; slug: string };
+  org: { name: string; slug: string; demo?: boolean };
   /**
    * What every link on the site is prefixed with: `/shelter-valley` on the
    * shared origin, and empty string on the ministry's own domain.
@@ -133,6 +133,11 @@ footer.site a{color:var(--brand-muted)}
 .notice{margin-top:1.25rem;padding:1rem 1.15rem;border-radius:var(--brand-radius);
   border:1px solid var(--brand-border);background:var(--brand-primary-soft);
   color:var(--brand-on-surface);font-size:.9rem}
+/* Deliberately outside the brand tokens: high-contrast and unmistakably not
+   part of the ministry's own design. */
+.demo-banner{background:#7f1d1d;color:#fff;padding:.85rem 1.25rem;font-size:.9rem;
+  text-align:center;line-height:1.45}
+.demo-banner strong{font-weight:700}
 @media (max-width:40rem){
   header.site .wrap{min-height:0;padding-top:.85rem;padding-bottom:.85rem}
   nav.site{gap:.9rem}
@@ -140,6 +145,23 @@ footer.site a{color:var(--brand-muted)}
   section.hero{padding:3rem 0 2.5rem}
 }
 `;
+
+/**
+ * The demonstration notice.
+ *
+ * Above the header, not in the footer, and not styled in the ministry's brand —
+ * a banner that matches the site it is warning about is a banner people read as
+ * part of the site. The demo ministries are publicly reachable so a prospect can
+ * be sent a link, and one of them deliberately shows a 16% share ratio against
+ * fabricated misconduct. Somebody who arrives from a search result and cannot
+ * tell it apart from a real customer has been misled by this product.
+ *
+ * Not editable, for the same reason the not-insurance disclaimer is not.
+ */
+const DEMO_BANNER = `<div class="demo-banner" role="note">
+  <strong>Demonstration site.</strong> This is a fictional ministry used to show how Auxilium
+  works. It is not a real organisation, the figures are invented, and no real people appear here.
+</div>`;
 
 export function renderMinistryPage(
   site: MinistrySite,
@@ -174,6 +196,12 @@ export function renderMinistryPage(
     <meta property="og:type" content="website">
     <meta property="og:url" content="${esc(canonical)}">
     <meta name="theme-color" content="${esc(site.brand.palette.primary)}">
+    ${site.org.demo
+      ? // Excluded from the sitemap already; this is the half that also covers a
+        // link somebody posts. A fabricated ministry in a search result carries
+        // none of the on-page banner into the snippet.
+        '<meta name="robots" content="noindex, nofollow">'
+      : ''}
     <!-- Generated from the same brand tokens as everything else, inline so it
          costs no request. On a custom domain the browser's speculative fetch of
          /favicon.ico would otherwise fire before anything has resolved. -->
@@ -182,6 +210,7 @@ export function renderMinistryPage(
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
+    ${site.org.demo ? DEMO_BANNER : ''}
     <header class="site">
       <div class="wrap">
         <a class="brandmark" href="${esc(home)}">

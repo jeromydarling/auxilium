@@ -7,6 +7,7 @@ import { useNriSummary, useNriTriage } from '@/hooks/nri/useNriSignals';
 import { useNriSessionEngine } from '@/hooks/nri/useNriSessionEngine';
 import { CompassChips } from '@/features/nri/DirectionChip';
 import { DIRECTION_META } from '@/lib/nri/directions';
+import { relativeDays } from '@/lib/utils';
 import { formatCentsCompact } from '@/lib/money';
 import { useAuth } from '@/app/AuthContext';
 
@@ -117,7 +118,7 @@ export function DashboardPage() {
             </div>
           ) : (
             <div className="divide-y rounded-lg border bg-card">
-              {triage.map(({ member, compass }) => (
+              {triage.map(({ member, compass, reason_count, waiting_since }) => (
                 <Link
                   key={member.id}
                   to={`/members/${member.id}`}
@@ -128,6 +129,16 @@ export function DashboardPage() {
                     {member.first_name} {member.last_name}
                     <span className="ml-2 text-xs text-muted-foreground">
                       {member.household_name ?? 'No household'}
+                    </span>
+                    {/* Why this row is above the one below it. On a bad week
+                        several members sit at 100, and without this the order
+                        looks arbitrary — which is how a board stops being
+                        trusted. Same discipline as showing a score's reasons. */}
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      {reason_count} {reason_count === 1 ? 'reason' : 'reasons'}
+                      {waiting_since
+                        ? ` · last contact ${relativeDays(waiting_since)}`
+                        : ' · no contact recorded'}
                     </span>
                   </span>
                   <CompassChips compass={compass} />

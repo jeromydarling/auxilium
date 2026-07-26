@@ -6,7 +6,7 @@ import { all, first, run, json } from '../lib/db';
 import { param } from '../lib/http';
 import { audit } from '../lib/audit';
 import { loadSignals, recomputeMembers } from '../lib/nri-service';
-import { buildCompass, explain, rankForTriage } from '../../src/lib/nri/engine';
+import { reasonCount, buildCompass, explain, rankForTriage } from '../../src/lib/nri/engine';
 import { NRI_RULES, RULES_VERSION } from '../../src/lib/nri/rules';
 import { DIRECTION_META, NRI_DIRECTIONS } from '../../src/lib/nri/directions';
 import { deriveNudges, type NudgeInputs } from '../../src/lib/nri/nudges';
@@ -77,9 +77,18 @@ nri.get('/triage', async (c) => {
       const member = memberById.get(id);
       const signals = signalsBySubject.get(id);
       if (!member || !signals) return null;
-      return { member, compass: buildCompass(signals) };
+      const compass = buildCompass(signals);
+      return {
+        member,
+        compass,
+        // Passed to the ranker and shown on the row. Both matter: without the
+        // first, five members at 100 are in database order; without the second,
+        // staff cannot see why one of them is above another.
+        waiting_since: member.last_contact_at,
+        reason_count: reasonCount(compass),
+      };
     })
-    .filter((x): x is { member: MemberSummary; compass: ReturnType<typeof buildCompass> } => x !== null);
+    .filter((x) => x !== null);
 
   return c.json({ items: rankForTriage(items), directions: DIRECTION_META });
 });

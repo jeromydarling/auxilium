@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { requireUser, requireRole, currentUser, type AppEnv } from '../lib/auth';
+import { first } from '../lib/db';
 import { param } from '../lib/http';
 import { audit } from '../lib/audit';
-import { first } from '../lib/db';
 import { nowIso } from '../../src/lib/utils';
 import { stripeConfigured, StripeError } from '../lib/stripe';
 import {
@@ -11,6 +11,7 @@ import {
   syncAccountState,
   listPeriods,
   closePeriod,
+  reconcilePeriod,
 } from '../lib/billing-service';
 import { periodKey, previousPeriod, settlePeriod } from '../../src/lib/billing/period';
 import {
@@ -253,6 +254,42 @@ billing.post('/periods/:period/close', requireLeadership, async (c) => {
  * Powers the "what would this cost us" question during a sales conversation,
  * against exactly the arithmetic that will bill them.
  */
+/**
+ * Reconcile a month against Stripe.
+ *
+ * Read-only, and reports rather than repairs. See `reconcilePeriod` for why: a
+ * reconciler that silently inserts contributions is a second, unaudited path
+ * into the ledger a ministry is being asked to stand behind.
+ */
+billing.get('/periods/:period/reconcile', requireLeadership, async (c) => {
+  const user = (await currentUser(c))!;
+  const period = param(c, 'period');
+
+  if (!/^\d{4}-\d{2}$/.test(period)) {
+    return c.json({ error: 'Use a month, like 2026-07.' }, 400);
+  }
+
+  const result = await reconcilePeriod(c.env, user.org_id, period);
+
+  // Written to the audit log when it does not balance, and only then. A clean
+  // reconciliation every night would bury the one that mattered.
+  if (result.status === 'discrepancy') {
+    await audit(c.env.DB, {
+      orgId: user.org_id, actorId: user.id, actorKind: 'user',
+      action: 'billing.reconciliation_discrepancy',
+      subjectType: 'billing_period', subjectId: period,
+      meta: {
+        stripe_cents: result.stripe.cents,
+        ledger_cents: result.ledger.cents,
+        missing_from_ledger: result.missing_from_ledger.length,
+        missing_from_stripe: result.missing_from_stripe.length,
+      },
+    });
+  }
+
+  return c.json(result);
+});
+
 billing.get('/estimate', async (c) => {
   const raw = c.req.query('volume_cents');
   const volume = Number.parseInt(raw ?? '', 10);

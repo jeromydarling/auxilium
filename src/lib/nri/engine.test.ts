@@ -457,6 +457,106 @@ describe('the compass', () => {
   });
 });
 
+/**
+ * The saturated board.
+ *
+ * A genuinely bad week produces several members at 100 out of 100. Ranking by
+ * band and not within it tells staff those people are interchangeable, so they
+ * work the top row — which was whatever the database returned first. These pin
+ * the order that replaced that, in the order the chain applies it.
+ */
+describe('ranking members who all score the same', () => {
+  const code = (c: string) => ({ code: c, label: c, weight: 10, detail: c });
+
+  const at100 = (
+    id: string,
+    reasons: string[],
+    waiting_since?: string | null,
+    direction: 'cura' | 'onus' = 'onus',
+  ) => ({
+    waiting_since,
+    compass: buildCompass(
+      NRI_DIRECTIONS.map((d) => ({
+        subject_type: 'member' as const,
+        subject_id: id,
+        direction: d,
+        score: d === direction ? 100 : 0,
+        reason_codes: d === direction ? reasons.map(code) : [],
+        source: 'rules.v1',
+        updated_at: NOW,
+        dismissed: false,
+      })),
+    ),
+  });
+
+  it('puts more separate problems first', () => {
+    // Four things wrong is a harder situation than one thing wrong that happens
+    // to score the same.
+    const many = at100('a', ['onus.sla_breached', 'onus.unacknowledged', 'onus.no_guideline']);
+    const few = at100('b', ['onus.sla_breached']);
+    expect(rankForTriage([few, many]).map((s) => s.compass.subject_id)).toEqual(['a', 'b']);
+  });
+
+  it('then puts whoever has been waiting longest first', () => {
+    const stale = at100('old', ['onus.sla_breached'], '2026-01-01T00:00:00Z');
+    const recent = at100('new', ['onus.sla_breached'], '2026-07-01T00:00:00Z');
+    expect(rankForTriage([recent, stale]).map((s) => s.compass.subject_id)).toEqual(['old', 'new']);
+  });
+
+  it('does not treat an unrecorded contact date as recent contact', () => {
+    // Sorting a missing date as "today" would bury somebody genuinely unchased;
+    // sorting it as "forever ago" would invent an overdue follow-up. It sorts
+    // last among equals, which claims nothing either way.
+    const known = at100('known', ['onus.sla_breached'], '2026-01-01T00:00:00Z');
+    const unknown = at100('unknown', ['onus.sla_breached'], null);
+    expect(rankForTriage([unknown, known]).map((s) => s.compass.subject_id))
+      .toEqual(['known', 'unknown']);
+  });
+
+  it('still breaks toward Cura before any of the mechanical tie-breaks', () => {
+    // A documented moral choice: the hurting person outranks the expensive case.
+    // It must not be quietly demoted by the tie-breaks added underneath it.
+    const hurting = at100('cura', ['cura.hospitalized'], '2026-07-01T00:00:00Z', 'cura');
+    const expensive = at100(
+      'onus',
+      ['onus.sla_breached', 'onus.unacknowledged', 'onus.no_guideline'],
+      '2026-01-01T00:00:00Z',
+    );
+    expect(rankForTriage([expensive, hurting])[0].compass.subject_id).toBe('cura');
+  });
+
+  it('is a total order, so the board does not reshuffle between two requests', () => {
+    // Without a final tie-break, identical rows come back in whatever order the
+    // query produced — and a staff member who scrolled away loses their place
+    // for no reason anybody could explain.
+    const rows = [at100('c', ['x']), at100('a', ['x']), at100('b', ['x'])];
+    const first = rankForTriage(rows).map((s) => s.compass.subject_id);
+    const again = rankForTriage([...rows].reverse()).map((s) => s.compass.subject_id);
+    expect(first).toEqual(again);
+    expect(first).toEqual(['a', 'b', 'c']);
+  });
+
+  it('does not count a dismissed direction’s reasons', () => {
+    // "I have seen this and handled it" must not keep inflating somebody's
+    // position on the board.
+    const live = at100('live', ['onus.sla_breached', 'onus.unacknowledged']);
+    const dismissed = {
+      waiting_since: null,
+      compass: buildCompass(
+        NRI_DIRECTIONS.map((d) => ({
+          subject_type: 'member' as const, subject_id: 'dismissed', direction: d,
+          score: d === 'onus' ? 100 : 0,
+          reason_codes: d === 'onus'
+            ? ['onus.sla_breached', 'onus.unacknowledged', 'onus.no_guideline'].map(code)
+            : [],
+          source: 'rules.v1', updated_at: NOW, dismissed: d === 'onus',
+        })),
+      ),
+    };
+    expect(rankForTriage([dismissed, live])[0].compass.subject_id).toBe('live');
+  });
+});
+
 describe('dismissal resurfacing', () => {
   it('stays hidden when nothing meaningful changed', () => {
     expect(shouldResurface(60, 62)).toBe(false);

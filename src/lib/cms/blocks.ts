@@ -281,8 +281,25 @@ export function newBlock(type: BlockType): Block {
  */
 export interface SiteContext {
   ministryName: string;
-  /** Share ratio in basis points, and the window it covers. */
+  /**
+   * Share ratio in basis points, and the window it covers.
+   *
+   * Present only when the ministry has *chosen* to publish its numbers. A
+   * ministry with a full ledger that has not made that choice yet has no ratio
+   * here, and the block does not appear — publishing where a ministry's money
+   * went is their decision to make, not a default they discover after the fact.
+   */
   shareRatio?: { bps: number; periodLabel: string };
+  /**
+   * Why there is no ratio, when there is none.
+   *
+   * Two absences that look identical on the page and are completely different
+   * to act on: an empty ledger is bookkeeping, an undeclared choice is one
+   * toggle. Telling a ministry to "record a month of contributions" when it has
+   * eighteen months recorded is the kind of wrong advice that makes somebody
+   * stop reading the warnings.
+   */
+  shareRatioGap?: 'no_ledger' | 'not_published';
   guidelines?: { version: string; effective_from: string; provisionCount: number; url?: string }[];
   /**
    * Which version binds a member, as the ministry has declared it. Ministries
@@ -411,6 +428,9 @@ const LIVE_GAPS: Record<string, string> = {
   share_ratio:
     'This will not appear: there is nothing in the ledger yet, so there is no share ratio ' +
     'to publish. Record a month of contributions and disbursements first.',
+  share_ratio_not_published:
+    'This will not appear: you have not chosen to publish your share ratio. The figure exists — ' +
+    'turning it on in Settings puts it on your site and at your public transparency address.',
   guidelines:
     'This will not appear: no sharing guidelines have been published, so there is nothing ' +
     'for it to list.',
@@ -432,6 +452,14 @@ const LIVE_GAPS: Record<string, string> = {
  * ministry's setup — so it is reported here rather than left to be discovered
  * by looking at the published site and wondering where the section went.
  */
+/** The gap message, narrowed by *why* the data is absent where that differs. */
+export function liveGap(type: BlockType, ctx: SiteContext): string {
+  if (type === 'share_ratio' && ctx.shareRatioGap === 'not_published') {
+    return LIVE_GAPS.share_ratio_not_published;
+  }
+  return LIVE_GAPS[type] ?? 'This will not appear.';
+}
+
 export function reviewSite(pages: SitePage[], ctx?: SiteContext): SiteIssue[] {
   const issues: SiteIssue[] = [];
   const seen = new Set<string>();
@@ -475,7 +503,7 @@ export function reviewSite(pages: SitePage[], ctx?: SiteContext): SiteIssue[] {
       }
 
       if (ctx && isLive(block.type) && resolveBlock(block, ctx) === null) {
-        issues.push({ path: `${page.slug}.${block.id}`, message: LIVE_GAPS[block.type] });
+        issues.push({ path: `${page.slug}.${block.id}`, message: liveGap(block.type, ctx) });
       }
     }
   }

@@ -122,6 +122,11 @@ async function publishedMinistryPages(env: Env) {
        FROM cms_pages p JOIN organizations o ON o.id = p.org_id
       WHERE p.status = 'published' AND p.deleted_at IS NULL
         AND o.site_published_at IS NOT NULL AND o.deleted_at IS NULL
+        -- Demonstration ministries are publicly reachable so a prospect can be
+        -- sent a link, but they must never be indexed. A fabricated ministry in
+        -- a search result is the same harm the on-page banner exists to prevent,
+        -- one step removed and without the banner in the snippet.
+        AND o.kind != 'demo'
       ORDER BY o.slug, p.position`,
   );
 }
@@ -331,7 +336,7 @@ function toMinistrySite(
   const platform = platformOrigin(c);
 
   return {
-    org: { name: site.org.name, slug: site.org.slug },
+    org: { name: site.org.name, slug: site.org.slug, demo: site.org.demo },
     // Empty on a ministry's own domain, `/slug` on the shared origin. See the
     // note on MinistrySite: the renderer must not guess which it is drawing.
     base: onOwnDomain ? '' : `/${site.org.slug}`,

@@ -185,20 +185,101 @@ export function shouldResurface(
   return newScore - dismissedAtScore >= 15;
 }
 
+/** What a triage row needs beyond its compass, to be ordered against its peers. */
+export interface TriageSubject {
+  compass: NriCompass;
+  /**
+   * When anyone last made contact. Older is worse.
+   *
+   * Optional because not every caller has it, and a subject without it must not
+   * sort as though contact were yesterday — it sorts last among equals instead,
+   * which is the conservative direction: never claim somebody has been chased
+   * more recently than the record shows.
+   */
+  waiting_since?: string | null;
+}
+
 /**
- * Rank subjects for the triage queue. Highest peak first; ties break by the
- * dominant direction's priority, then by how many directions are live at all —
- * a member lit up on three directions is a harder situation than one lit on one.
+ * Rank subjects for the triage queue.
+ *
+ * The problem this solves is saturation. A genuinely bad week produces five
+ * members at 100 out of 100, and a board that ranks by band but not within it
+ * tells staff those five are interchangeable — so they pick the top row, which
+ * is whatever the database returned first. The score is the sum of its reasons
+ * and stays that way; what changes is that equal scores are no longer an
+ * arbitrary order.
+ *
+ * The chain, and why it is in this order:
+ *
+ * 1. **Peak score.** The number, unchanged.
+ * 2. **Dominant direction.** Ties break toward Cura — the hurting person
+ *    outranks the expensive case. A documented moral choice, kept above the
+ *    mechanical tie-breaks below rather than quietly demoted by them.
+ * 3. **How many reasons matched.** Four separate things wrong is a harder
+ *    situation than one thing wrong that happens to score the same. This is the
+ *    tie-break that does most of the work on a saturated board, because most
+ *    rows there share a dominant direction.
+ * 4. **How many directions are live.** A member lit on three is in a worse
+ *    situation than one lit on one.
+ * 5. **Who has been waiting longest.** Among people equally badly off, the one
+ *    nobody has spoken to in five weeks goes first.
+ * 6. **Subject id.** Not a judgement — a guarantee. Without a total ordering the
+ *    board reshuffles between two identical requests, and a staff member who
+ *    scrolled away loses their place for no reason.
  */
-export function rankForTriage<T extends { compass: NriCompass }>(subjects: T[]): T[] {
+export function rankForTriage<T extends TriageSubject>(subjects: T[]): T[] {
   return [...subjects].sort((a, b) => {
     if (b.compass.peak !== a.compass.peak) return b.compass.peak - a.compass.peak;
+
     const prio = DIRECTION_PRIORITY[b.compass.dominant] - DIRECTION_PRIORITY[a.compass.dominant];
     if (prio !== 0) return prio;
-    return liveDirections(b.compass) - liveDirections(a.compass);
+
+    const reasons = reasonCount(b.compass) - reasonCount(a.compass);
+    if (reasons !== 0) return reasons;
+
+    const live = liveDirections(b.compass) - liveDirections(a.compass);
+    if (live !== 0) return live;
+
+    const wait = waitRank(a) - waitRank(b);
+    if (wait !== 0) return wait;
+
+    return a.compass.subject_id < b.compass.subject_id ? -1 : 1;
   });
+}
+
+/**
+ * Distinct reasons across every live direction.
+ *
+ * Counted on a Set, because the same reason code can legitimately be cited by
+ * two directions — a stalled claim is both case-handling and, for the member
+ * waiting on it, a reason nobody has been in touch. Counting it twice would
+ * make one problem look like two.
+ */
+export function reasonCount(compass: NriCompass): number {
+  // Deduped on `code`, not on the object. A Set of ReasonCode objects never
+  // dedupes anything — two directions citing the same rule produce two distinct
+  // object literals — so the count would quietly double for exactly the members
+  // this is meant to distinguish.
+  const seen = new Set<string>();
+  for (const explanation of compass.explanations) {
+    if (explanation.dismissed) continue;
+    for (const reason of explanation.reasons) seen.add(reason.code);
+  }
+  return seen.size;
 }
 
 function liveDirections(compass: NriCompass): number {
   return NRI_DIRECTIONS.filter((d) => compass.scores[d] >= 25).length;
+}
+
+/**
+ * Sortable staleness. Lower sorts first, so the oldest contact leads.
+ *
+ * An unknown date sorts last rather than first: claiming somebody is overdue for
+ * contact on the strength of a missing field would put them above a member we
+ * genuinely have not spoken to in a month.
+ */
+function waitRank(subject: TriageSubject): number {
+  const at = subject.waiting_since;
+  return at ? Date.parse(at) || Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
 }

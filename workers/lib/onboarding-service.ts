@@ -1,5 +1,5 @@
 import type { Env } from './env';
-import { first, run } from './db';
+import { first, json, run } from './db';
 import { nowIso } from '../../src/lib/utils';
 import {
   summarizeOnboarding, type OnboardingFacts, type OnboardingSummary,
@@ -35,9 +35,9 @@ function parseState(raw: string | null | undefined): OnboardingState {
 }
 
 export async function gatherOnboarding(env: Env, orgId: string): Promise<OnboardingSummary> {
-  const org = await first<{ onboarding_state: string | null }>(
+  const org = await first<{ onboarding_state: string | null; brand: string | null }>(
     env.DB,
-    'SELECT onboarding_state FROM organizations WHERE id = ?',
+    'SELECT onboarding_state, brand FROM organizations WHERE id = ?',
     orgId,
   );
   const state = parseState(org?.onboarding_state);
@@ -71,6 +71,13 @@ export async function gatherOnboarding(env: Env, orgId: string): Promise<Onboard
     member_count: counts?.members ?? 0,
     team_member_count: Math.max(0, counts?.team ?? 0),
     has_ledger_entries: (counts?.ledger ?? 0) > 0,
+    // Derived, not recorded, like every other status here. The flag has three
+    // states and the third is the useful one: `true` publishes, `false` is a
+    // deliberate no, and absent means nobody has been asked. No new stored
+    // field is needed to tell "decided no" from "never considered".
+    share_ratio_decided:
+      typeof json<{ publish_share_ratio?: unknown }>(org?.brand ?? '{}', {})
+        .publish_share_ratio === 'boolean',
     portal_accounts: counts?.portal ?? 0,
     dismissed: Boolean(state.dismissed_at),
   };
@@ -91,9 +98,9 @@ export async function markOnboarding(
   orgId: string,
   key: keyof OnboardingState,
 ): Promise<void> {
-  const org = await first<{ onboarding_state: string | null }>(
+  const org = await first<{ onboarding_state: string | null; brand: string | null }>(
     env.DB,
-    'SELECT onboarding_state FROM organizations WHERE id = ?',
+    'SELECT onboarding_state, brand FROM organizations WHERE id = ?',
     orgId,
   );
   const state = parseState(org?.onboarding_state);

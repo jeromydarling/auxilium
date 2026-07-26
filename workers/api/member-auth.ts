@@ -169,10 +169,14 @@ memberAuth.post('/invite/:token', async (c) => {
   const { hash, salt } = await hashPassword(password);
   await run(
     c.env.DB,
+    // Scoped by the org the invite belongs to as well as by the account id. The
+    // id came from a single-use token so it cannot be forged, but a statement
+    // that carries its own tenant cannot be widened by a later change to the
+    // lookup above.
     `UPDATE member_accounts
         SET password_hash = ?, password_salt = ?, status = 'active', updated_at = ?
-      WHERE id = ?`,
-    hash, salt, now, invite.member_account_id,
+      WHERE id = ? AND org_id = ?`,
+    hash, salt, now, invite.member_account_id, invite.org_id,
   );
 
   await audit(c.env.DB, {
@@ -431,8 +435,12 @@ memberAuth.post('/health-disclosure', requireMember, async (c) => {
     const id = newId('healthDisclosure');
     await c.env.DB.batch([
       c.env.DB.prepare(
-        `UPDATE member_health_disclosures SET superseded_at = ?, updated_at = ? WHERE id = ?`,
-      ).bind(now, now, existing.id),
+        // Same reasoning as the draft update below: the tenant predicate is
+        // restated so the statement is safe read on its own.
+        `UPDATE member_health_disclosures
+            SET superseded_at = ?, updated_at = ?
+          WHERE id = ? AND member_id = ?`,
+      ).bind(now, now, existing.id, member.member_id),
       c.env.DB.prepare(
         `INSERT INTO member_health_disclosures
            (id, org_id, member_id, answers, form_version, lookback_months,
@@ -456,11 +464,15 @@ memberAuth.post('/health-disclosure', requireMember, async (c) => {
   if (existing) {
     await run(
       c.env.DB,
+      // `member_id` restated even though `existing.id` came from a member-scoped
+      // read. It costs one bind parameter and makes the statement safe on its own
+      // terms — a reviewer does not have to trace where the id came from, and a
+      // later refactor of the read above cannot silently widen the write.
       `UPDATE member_health_disclosures
           SET answers = ?, form_version = ?, lookback_months = ?, completed_at = ?, updated_at = ?
-        WHERE id = ?`,
+        WHERE id = ? AND member_id = ?`,
       JSON.stringify(answers ?? {}), form.version, form.lookback_months,
-      submit ? now : null, now, existing.id,
+      submit ? now : null, now, existing.id, member.member_id,
     );
   } else {
     await run(

@@ -29,9 +29,11 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 507 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 529 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
+| `bun run db:backup:prod` | Dated read-only export of production |
+| `bun run db:verify-backup <file>` | Prove an export restores, in a scratch database |
 
 ---
 
@@ -164,6 +166,19 @@ facts and the same timestamp, the output is byte-identical, forever.
 the expensive case. That is a moral choice encoded in `DIRECTION_PRIORITY`, not
 an accident.
 
+**Equal scores are a total order.** A bad week produces five members at 100, and
+a board that ranks by band but not within it tells staff those five are
+interchangeable — so they work the top row, which was whatever the database
+returned first. After the score and the Cura precedence, `rankForTriage` breaks
+on how many distinct reasons matched, then how many directions are live, then who
+has gone longest without contact, then subject id. The last is not a judgement
+but a guarantee: without it the board reshuffles between two identical requests
+and somebody loses their place for no reason. **The row shows the basis** —
+"4 reasons · last contact 31 days ago" — because a ranking whose basis is
+invisible is indistinguishable from an arbitrary one. `reasonCount` dedupes on
+`code`: a `Set` of `ReasonCode` objects never dedupes, and the count would have
+doubled for exactly the members this exists to tell apart.
+
 **Household complexity scores on the primary contact only.** Size, dependents,
 caregiving, and recent changes are properties of the *household*. Scoring them
 on every member put eight rows on the triage board for one family and ranked
@@ -236,7 +251,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-507 tests over the logic that carries the risk: NRI scoring, integrity and
+529 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -252,6 +267,27 @@ They pin behavior, not implementation:
 
 When you add a rule, add a test pinning what you intend. When you change a
 weight, expect a persona test to fail — that is the test working.
+
+### Three tests that guard invariants rather than behaviour
+
+Each replaces a rule that was written down and enforced nowhere. All three were
+verified by deliberately introducing the violation and watching them fail —
+a guard nobody has seen fail is a guard nobody knows works.
+
+- **`workers/lib/tenancy.test.ts`** reads the source and fails on any SQL without
+  a tenant predicate. "Every tenant-scoped query carries `org_id`, there is no
+  exception" held because every author remembered, which is a social contract,
+  not a mechanism. It also asserts every dynamic `conditions` array *starts* with
+  the tenant, and that the member API never scopes by `org_id`. The allowlist is
+  the interesting part: each entry names why that query has no tenant, so a new
+  unexplained entry is the thing to argue about in review.
+- **`src/lib/claims/promises.test.ts`** fails on promissory language in anything a
+  member reads — the source, an eligibility answer under the most favourable
+  inputs available, and a knowledge answer. It is sentence-level and
+  negation-aware, because "it cannot tell you whether a need will be shared" is
+  the *correct* wording and a guard that flags correct behaviour gets muted.
+- **`src/lib/brand/assets.test.ts`** pins that generated SVG parses, escapes, and
+  cannot render illegible text.
 
 ---
 
@@ -806,6 +842,16 @@ form. A ministry that hand-types its share ratio has a wrong number on its
 website within a quarter, and the wrong number is the one a journalist
 screenshots. Live blocks cannot drift because there is nothing to drift from.
 
+**Publishing the ratio is the ministry's decision, and one decision.**
+`organizations.brand.publish_share_ratio` gates both the site block and
+`/api/integrity/public/:slug`. It used to gate only the API, so a ministry that
+had not opted in got the figure published on its own website anyway by keeping a
+block the template put there — a product arguing for consent-based disclosure
+cannot have one surface asking and the other assuming. The flag has **three**
+states and the third is load-bearing: `true`, an explicit `false`, and absent
+meaning nobody has been asked. That is what makes "have they decided?" derivable
+without storing anything, and it is a step on the setup checklist.
+
 **The published ratio is the integrity report's own number**, from
 `gatherIntegrityFacts` — not a second query that means roughly the same thing.
 Two numbers for one fact is what this product spends the rest of its time
@@ -818,7 +864,18 @@ ratio" heading over a dash reads to a visitor as a ministry with something to
 hide. The editor runs the same resolution, so a ministry sees the section
 missing — with the specific thing to go and do — while it can still be fixed.
 `reviewSite` names the gap in terms of the action ("record a month of
-contributions"), because "no data" is not actionable.
+contributions"), because "no data" is not actionable — and it distinguishes an
+empty ledger from an undeclared choice, because telling a ministry with eighteen
+months recorded to "record a month of contributions" is the kind of wrong advice
+that makes somebody stop reading warnings.
+
+**The demonstration ministries are labelled, unindexed, and still public.** They
+stay reachable so a prospect can be sent a link, but one of them deliberately
+reproduces documented misconduct at a 16% share ratio, so every page carries an
+unremovable banner in high contrast *outside* the ministry's brand — a notice
+styled like the site it warns about reads as part of the site — plus `noindex`,
+and they are excluded from the sitemap. A fabricated ministry in a search result
+carries none of the banner into the snippet.
 
 **The guidelines block reads the ministry's declared governing rule.**
 Ministries publish four different answers to *which version binds a member* and
@@ -1253,6 +1310,44 @@ any organization a reader might be evaluating.
 
 ---
 
+## Recovery and abuse limits
+
+[`docs/recovery.md`](docs/recovery.md) is the runbook: what is at risk, how to
+use D1 Time Travel without discarding somebody else's afternoon, how to recover
+one ministry without rolling back forty, and the gaps that are known rather than
+fixed. Restore has been rehearsed against a scratch database and deliberately
+never against production.
+
+**Reconciliation closes the gap the webhook cannot.** Every guard on the Stripe
+path — signature before meaning, the exactly-once claim, release-on-failure —
+is about an event arriving *twice*. None is about it never arriving, and a
+disabled endpoint or a deploy that 500'd through Stripe's retry schedule both end
+as money that settled against a ledger that never heard about it, which looks
+exactly like a quiet month. `GET /api/billing/periods/:period/reconcile` compares
+the two and **reports rather than repairs**: a reconciler that silently inserts
+contributions would be a second, unaudited path into the ledger a ministry is
+being asked to stand behind. A discrepancy is written to the audit log; a clean
+result is not, because a nightly "balanced" would bury the one that mattered.
+
+Three limits on the abusable surfaces, all failing **open** so an infrastructure
+blip is never what stops a family joining:
+
+- **256KB request bodies**, checked on `Content-Length` before anything is
+  parsed. A 50MB POST to the public form otherwise costs real CPU before the
+  first line of validation.
+- **Twelve applications per address per hour.** Not a spam filter and nothing is
+  dropped — a church office helping four households from one connection, or
+  somebody retrying on a bad phone signal, must not be refused. The 429 names the
+  phone as an alternative.
+- **Negative caching on both hostname and slug lookups.** The `Host` header is
+  chosen by the caller and the custom-domain check runs ahead of everything, so
+  without caching *misses* a stranger turns one random hostname per request into
+  one database read on every path. Caching only hits would have left it wide
+  open, because the attack consists entirely of misses. Invalidated on publish,
+  rename, domain verify, claim, and release.
+
+---
+
 ## Deploying
 
 **GitHub Actions on push to `main` is the only deploy path.** It builds with
@@ -1318,10 +1413,6 @@ requested thing that does not exist.
 `subject_type='household'`. Scoring the household directly is cleaner than the
 current primary-contact proxy, and would let the board show a household as a
 single row with its members underneath.
-
-**Score spread at the top.** Genuinely urgent members all saturate at 100, so
-the board ranks by band but not within it. Either raise the ceiling or normalize
-weights so the worst case is distinguishable from the merely urgent.
 
 **Notification delivery.** Signals are computed and displayed but never pushed.
 A daily digest of urgent members, with one-click unsubscribe, is the highest-value

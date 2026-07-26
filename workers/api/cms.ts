@@ -5,7 +5,7 @@ import { param } from '../lib/http';
 import { audit } from '../lib/audit';
 import { newId, randomSecret } from '../../src/lib/ids';
 import { nowIso } from '../../src/lib/utils';
-import { loadSite } from '../lib/site-service';
+import { loadSite, forgetSiteMiss } from '../lib/site-service';
 import { defaultSite, reviewSite, slugAvailable, resolveSite, siteNav } from '../../src/lib/cms/blocks';
 import { dnsInstructions, normalizeDomain, validateDomain, verificationToken } from '../../src/lib/cms/domains';
 import { verifyDomain, forgetHost } from '../lib/domain-service';
@@ -183,6 +183,15 @@ cms.patch('/site', requireRole('owner', 'admin'), async (c) => {
     );
   }
 
+  // Otherwise a ministry that has just clicked publish spends the next minute
+  // looking at Auxilium's 404 on its own address, which reads as the button not
+  // having worked. Cleared on unpublish too, so the cache never disagrees with
+  // the database in either direction.
+  const org = await first<{ slug: string }>(
+    c.env.DB, 'SELECT slug FROM organizations WHERE id = ?', user.org_id,
+  );
+  if (org) await forgetSiteMiss(c.env, org.slug);
+
   await audit(c.env.DB, {
     orgId: user.org_id, actorId: user.id, actorKind: 'user',
     action: published ? 'cms.site_published' : 'cms.site_unpublished',
@@ -235,6 +244,11 @@ cms.patch('/site/slug', requireRole('owner'), async (c) => {
   } catch {
     return c.json({ error: 'Another ministry is already at that address.' }, 409);
   }
+
+  // Both addresses: the new one so it starts answering immediately, the old one
+  // so a cached hit does not outlive the rename.
+  await forgetSiteMiss(c.env, clean);
+  if (before?.slug) await forgetSiteMiss(c.env, before.slug);
 
   await audit(c.env.DB, {
     orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'cms.slug_changed',

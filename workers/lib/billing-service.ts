@@ -27,6 +27,7 @@ import {
   createAccountLink,
   createCustomer,
   invoicePlatformFee,
+  listSettledCharges,
   StripeError,
   type StripeAccount,
 } from './stripe';
@@ -478,6 +479,117 @@ export function listPeriods(env: Env, orgId: string, limit = 24): Promise<Billin
  * twice". The unique constraint does the work; the insert failing is the
  * signal.
  */
+/**
+ * Compare what Stripe says settled in a month with what the ledger recorded.
+ *
+ * The gap this closes: every guard on the webhook path assumes the event
+ * arrives. Signature verification, the exactly-once claim, releasing the claim
+ * on failure — all of them are about an event being processed *twice*. None is
+ * about it never showing up, and an endpoint that was disabled for a day, a
+ * rotated signing secret, or a deploy that 500'd through Stripe's whole retry
+ * schedule all end the same way: money that settled and a ledger that never
+ * heard about it. That looks exactly like a quiet month.
+ *
+ * **Read-only, deliberately.** It reports the discrepancy; it does not write the
+ * missing rows. Two reasons. A reconciler that silently inserts contributions is
+ * a second, unaudited path into the ledger — and the ledger is the artefact this
+ * whole product asks ministries to stand behind. And a discrepancy is sometimes
+ * Stripe's fault, sometimes a refund the ledger netted correctly, and sometimes
+ * a genuine bug; a human should decide which before anything is written.
+ */
+export interface Reconciliation {
+  period: string;
+  /** Charges Stripe reports as succeeded, and their total. */
+  stripe: { count: number; cents: number };
+  /** Contributions the ledger holds for the same window. */
+  ledger: { count: number; cents: number };
+  /** Stripe charge ids with no matching contribution row. */
+  missing_from_ledger: string[];
+  /** Contribution rows with no matching Stripe charge — the rarer, odder case. */
+  missing_from_stripe: string[];
+  /** True when both sides agree exactly. */
+  balanced: boolean;
+  status: 'balanced' | 'discrepancy' | 'not_configured' | 'no_account';
+}
+
+export async function reconcilePeriod(
+  env: Env,
+  orgId: string,
+  period: string,
+): Promise<Reconciliation> {
+  const empty = { count: 0, cents: 0 };
+
+  if (!env.STRIPE_SECRET_KEY) {
+    return {
+      period, stripe: empty, ledger: empty,
+      missing_from_ledger: [], missing_from_stripe: [],
+      balanced: true, status: 'not_configured',
+    };
+  }
+
+  const account = await first<{ stripe_account_id: string }>(
+    env.DB,
+    'SELECT stripe_account_id FROM billing_accounts WHERE org_id = ?',
+    orgId,
+  );
+
+  const ledgerRows = await all<{ stripe_payment_intent_id: string | null; amount_cents: number }>(
+    env.DB,
+    `SELECT stripe_payment_intent_id, amount_cents FROM contributions
+      WHERE org_id = ? AND period = ? AND kind = 'share'`,
+    orgId, period,
+  );
+  const ledger = {
+    count: ledgerRows.length,
+    cents: ledgerRows.reduce((n, r) => n + r.amount_cents, 0),
+  };
+
+  if (!account) {
+    // No connected account and ledger rows anyway is normal: a ministry can
+    // record contributions it collected by cheque. Nothing to compare against.
+    return {
+      period, stripe: empty, ledger,
+      missing_from_ledger: [], missing_from_stripe: [],
+      balanced: true, status: 'no_account',
+    };
+  }
+
+  const bounds = periodBounds(period);
+  const charges = await listSettledCharges(
+    env,
+    account.stripe_account_id,
+    Math.floor(Date.parse(bounds.start) / 1000),
+    Math.floor(Date.parse(bounds.end) / 1000),
+  );
+
+  // Matched on payment intent, which is what the webhook writes. Falling back to
+  // the charge id would appear to match more and mean less.
+  const ledgerIntents = new Set(
+    ledgerRows.map((r) => r.stripe_payment_intent_id).filter((id): id is string => Boolean(id)),
+  );
+  const stripeIntents = new Set(
+    charges.map((c) => c.payment_intent).filter((id): id is string => Boolean(id)),
+  );
+
+  const missingFromLedger = charges
+    .filter((c) => !c.payment_intent || !ledgerIntents.has(c.payment_intent))
+    .map((c) => c.id);
+
+  const missingFromStripe = [...ledgerIntents].filter((id) => !stripeIntents.has(id));
+
+  return {
+    period,
+    stripe: { count: charges.length, cents: charges.reduce((n, c) => n + c.amount, 0) },
+    ledger,
+    missing_from_ledger: missingFromLedger,
+    missing_from_stripe: missingFromStripe,
+    balanced: missingFromLedger.length === 0 && missingFromStripe.length === 0,
+    status: missingFromLedger.length === 0 && missingFromStripe.length === 0
+      ? 'balanced'
+      : 'discrepancy',
+  };
+}
+
 export async function claimEvent(
   env: Env,
   event: { id: string; type: string },

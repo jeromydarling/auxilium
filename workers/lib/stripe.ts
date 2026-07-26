@@ -285,6 +285,64 @@ export function createCustomer(
  *   • The comparison is constant-time. A fast-exit compare leaks the expected
  *     signature one byte at a time to anyone willing to measure.
  */
+/**
+ * Charges Stripe says settled into a connected account in a window.
+ *
+ * This exists for one reason: the webhook is defended against being processed
+ * *twice* and not at all against never arriving. Every guard on that path — the
+ * signature, the exactly-once claim, the release-on-failure — assumes the event
+ * shows up. An endpoint that was disabled for a day, a signing secret rotated
+ * mid-flight, or a deploy that 500'd through Stripe's whole retry schedule all
+ * end the same way: money that settled and a ledger that never heard about it.
+ *
+ * Silent under-recording looks exactly like a quiet month, which is why it needs
+ * a second source rather than a better handler.
+ *
+ * Read-only. It answers "what does Stripe think happened"; comparing that with
+ * the ledger is `reconcilePeriod`'s job, and neither of them writes anything.
+ */
+export async function listSettledCharges(
+  env: Env,
+  stripeAccount: string,
+  createdGte: number,
+  createdLt: number,
+): Promise<{ id: string; amount: number; created: number; payment_intent: string | null }[]> {
+  const collected: { id: string; amount: number; created: number; payment_intent: string | null }[] = [];
+  let startingAfter: string | undefined;
+
+  // Paged to exhaustion rather than capped. A cap would make reconciliation
+  // silently agree with the ledger on exactly the busiest months — the ones
+  // where a missed event matters most.
+  for (let page = 0; page < 40; page += 1) {
+    const result = await call<{
+      data: { id: string; amount: number; created: number; status: string; payment_intent: string | null }[];
+      has_more: boolean;
+    }>(
+      env,
+      'GET',
+      '/charges',
+      {
+        limit: 100,
+        'created[gte]': createdGte,
+        'created[lt]': createdLt,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
+      },
+      { stripeAccount },
+    );
+
+    collected.push(
+      ...result.data
+        .filter((charge) => charge.status === 'succeeded')
+        .map(({ id, amount, created, payment_intent }) => ({ id, amount, created, payment_intent })),
+    );
+
+    if (!result.has_more || result.data.length === 0) return collected;
+    startingAfter = result.data[result.data.length - 1].id;
+  }
+
+  return collected;
+}
+
 export async function verifyWebhookSignature(
   payload: string,
   signatureHeader: string | null,

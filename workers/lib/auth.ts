@@ -341,6 +341,46 @@ export async function clearLoginFailures(env: Env, ip: string, email: string): P
   }
 }
 
+// ── Public submission rate limiting ──────────────────────────────────────────
+
+/**
+ * A ceiling on how many applications one address may send in an hour.
+ *
+ * Deliberately high. The stated rule for this endpoint is that **nothing is ever
+ * dropped** — spam is scored into a low-confidence tab a human still reads,
+ * because the cost of a false positive is a family's membership. This does not
+ * change that: it is not a spam filter and it does not silently discard
+ * anything. It is a volume ceiling, and being told "wait a few minutes" is not
+ * the same as being told nothing happened.
+ *
+ * Twelve rather than two, because one household legitimately produces several:
+ * a family that mistypes an email and resubmits, a church office helping four
+ * households apply from one connection, somebody on a phone with a flaky
+ * connection retrying. All of those are real and none of them should be refused.
+ *
+ * Fails open, the same as the login limiter and for the same reason: a KV blip
+ * must never be the thing that stops a family joining.
+ */
+const APPLY_MAX_PER_HOUR = 12;
+const APPLY_WINDOW_SECONDS = 3600;
+
+export async function checkApplyRate(
+  env: Env,
+  ipHash: string,
+): Promise<{ ok: boolean; retryAfterSeconds: number }> {
+  try {
+    const key = `apply:${ipHash}`;
+    const count = Number.parseInt((await env.CACHE.get(key)) ?? '0', 10);
+    if (count >= APPLY_MAX_PER_HOUR) {
+      return { ok: false, retryAfterSeconds: APPLY_WINDOW_SECONDS };
+    }
+    await env.CACHE.put(key, String(count + 1), { expirationTtl: APPLY_WINDOW_SECONDS });
+    return { ok: true, retryAfterSeconds: 0 };
+  } catch {
+    return { ok: true, retryAfterSeconds: 0 };
+  }
+}
+
 // ── hex helpers ──────────────────────────────────────────────────────────────
 
 function bytesToHex(bytes: Uint8Array): string {

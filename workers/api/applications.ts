@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import {
-  requireUser, requireWriteAccess, currentUser, sha256, type AppEnv,
+  requireUser, requireWriteAccess, currentUser, sha256, checkApplyRate, type AppEnv,
 } from '../lib/auth';
 import { all, first, run, json } from '../lib/db';
 import { param } from '../lib/http';
@@ -101,6 +101,22 @@ publicApplications.post('/:slug', async (c) => {
   const ipHash = await sha256(
     `${c.req.header('cf-connecting-ip') ?? 'unknown'}:${org.id}`,
   );
+
+  // A volume ceiling, not a filter. Checked after validation so somebody who
+  // has typed a real application still gets their field errors back rather than
+  // a 429 that tells them nothing about what to fix.
+  const rate = await checkApplyRate(c.env, ipHash);
+  if (!rate.ok) {
+    return c.json(
+      {
+        error:
+          'That is a lot of applications from one connection in a short time. Wait a few minutes ' +
+          'and try again — or call the ministry directly and they can take it over the phone.',
+      },
+      429,
+      { 'Retry-After': String(rate.retryAfterSeconds) },
+    );
+  }
 
   const spam = scoreSubmission(submission, {
     honeypot: body.honeypot,

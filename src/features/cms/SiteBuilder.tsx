@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { PageHeader } from '@/app/AppShell';
-import { newBlock, isLive, type Block, type BlockType, type SitePage } from '@/lib/cms/blocks';
+import { newBlock, isLive, liveGap, type Block, type BlockType, type SitePage } from '@/lib/cms/blocks';
 import { brandCss } from '@/lib/brand/tokens';
 import { DomainSettings } from './DomainSettings';
 
@@ -544,33 +544,28 @@ function BlockEditor({
  * What a live block will show, or why it will not appear.
  *
  * Both matter. Showing the current value tells a ministry the wiring works;
- * naming the gap turns "my share ratio is missing" into "record a month of
- * ledger" without a support conversation.
+ * naming the gap turns "my share ratio is missing" into a specific thing to go
+ * and do without a support conversation.
+ *
+ * The gap text comes from `liveGap` in the pure layer — the same sentence
+ * `reviewSite` puts in the warning panel. Two copies of "why is this missing"
+ * is how the panel and the block end up giving different advice about the same
+ * absence, which is worse than either one alone.
  */
 function LiveBlockNote({ type, context }: { type: BlockType; context: SiteView['context'] }) {
-  const state: Record<string, { on: boolean; text: string }> = {
-    share_ratio: {
-      on: Boolean(context.shareRatio),
-      text: context.shareRatio
-        ? `Currently ${(context.shareRatio.bps / 100).toFixed(1)}%, over ${context.shareRatio.periodLabel}.`
-        : 'Nothing in your ledger yet, so this block will not appear. Record a month of contributions and disbursements.',
-    },
-    guidelines: {
-      on: Boolean(context.guidelines?.length),
-      text: context.guidelines?.length
-        ? `${context.guidelines.length} version${context.guidelines.length === 1 ? '' : 's'}, newest first.`
-        : 'You have not published any sharing guidelines, so this block will not appear.',
-    },
-    apply: {
-      on: Boolean(context.applyHref),
-      text: context.applyHref
-        ? `Links to your application form at ${context.applyHref}.`
-        : 'Your application form is not published, so this block will not appear.',
-    },
+  const present: Partial<Record<BlockType, string>> = {
+    share_ratio: context.shareRatio
+      ? `Currently ${(context.shareRatio.bps / 100).toFixed(1)}%, over ${context.shareRatio.periodLabel}.`
+      : undefined,
+    guidelines: context.guidelines?.length
+      ? `${context.guidelines.length} version${context.guidelines.length === 1 ? '' : 's'}, newest first.`
+      : undefined,
+    apply: context.applyHref ? `Links to your application form at ${context.applyHref}.` : undefined,
   };
 
-  const s = state[type];
-  if (!s) return null;
+  if (!isLive(type)) return null;
+  const on = Boolean(present[type]);
+  const s = { on, text: on ? present[type]! : liveGap(type, context) };
 
   return (
     <div className="space-y-1 text-sm">

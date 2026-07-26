@@ -71,6 +71,13 @@ export interface OnboardingFacts {
   team_member_count: number;
   /** Any contribution or disbursement recorded. */
   has_ledger_entries: boolean;
+  /**
+   * Whether the ministry has *answered* the question of publishing its share
+   * ratio — either way. Observable without stored state, because the flag has
+   * three states: true, explicitly false, and absent. Absent means nobody has
+   * been asked yet, which is exactly the thing worth prompting.
+   */
+  share_ratio_decided: boolean;
   /** Any member who can sign in to the portal. */
   portal_accounts: number;
   /** Set when someone chooses to stop being shown the list. */
@@ -125,6 +132,25 @@ export function buildOnboarding(facts: OnboardingFacts): OnboardingStep[] {
       weight: 'blocking',
       route: '/integrity',
       actionLabel: 'Add a version',
+    },
+    {
+      key: 'publish_ratio',
+      title: 'Decide whether to publish where the money went',
+      body:
+        'Your share ratio — of every dollar members contributed, how many cents reached their ' +
+        'medical costs. You can publish it on your own website and at a public address, or keep ' +
+        'it internal. Either answer is fine; not answering is the problem.',
+      consequence:
+        'Until you decide, the figure stays off your website and off your public page — so the ' +
+        'one number that distinguishes a ministry doing this honestly from the ones in the ' +
+        'lawsuits is invisible to everybody deciding whether to join you.',
+      status: facts.share_ratio_decided ? 'done' : 'todo',
+      // Not blocking: a ministry that chooses not to publish is not broken, and
+      // the software has no business insisting. But it is not optional either —
+      // an unanswered question is a gap, and the gap has a cost worth naming.
+      weight: 'important',
+      route: '/settings',
+      actionLabel: 'Decide',
     },
     {
       key: 'governing_rule',

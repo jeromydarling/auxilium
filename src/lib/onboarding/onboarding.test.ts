@@ -13,6 +13,7 @@ const EMPTY: OnboardingFacts = {
   member_count: 0,
   team_member_count: 0,
   has_ledger_entries: false,
+  share_ratio_decided: false,
   portal_accounts: 0,
   dismissed: false,
 };
@@ -24,6 +25,7 @@ const SET_UP: OnboardingFacts = {
   member_count: 40,
   team_member_count: 3,
   has_ledger_entries: true,
+  share_ratio_decided: true,
   portal_accounts: 12,
   dismissed: false,
 };
@@ -85,5 +87,30 @@ describe('ministry setup', () => {
   it('has no duplicate keys', () => {
     const keys = buildOnboarding(EMPTY).map((s) => s.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe('the publishing decision', () => {
+  it('is outstanding until the ministry answers it either way', () => {
+    const steps = buildOnboarding(EMPTY);
+    expect(steps.find((s) => s.key === 'publish_ratio')?.status).toBe('todo');
+  });
+
+  it('is done whichever way they answered', () => {
+    // Choosing not to publish is a complete answer. A checklist that only ticks
+    // for "yes" is not asking a question, it is applying pressure.
+    const steps = buildOnboarding({ ...EMPTY, share_ratio_decided: true });
+    expect(steps.find((s) => s.key === 'publish_ratio')?.status).toBe('done');
+  });
+
+  it('does not block, because a ministry that declines is not broken', () => {
+    expect(buildOnboarding(EMPTY).find((s) => s.key === 'publish_ratio')?.weight)
+      .not.toBe('blocking');
+  });
+
+  it('names what stays invisible rather than calling itself recommended', () => {
+    const step = buildOnboarding(EMPTY).find((s) => s.key === 'publish_ratio')!;
+    expect(step.consequence).toMatch(/invisible/);
+    expect(step.consequence.toLowerCase()).not.toContain('recommend');
   });
 });

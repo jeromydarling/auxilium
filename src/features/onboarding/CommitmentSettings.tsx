@@ -49,6 +49,12 @@ export function CommitmentSettings({ canEdit }: { canEdit: boolean }) {
   const [slaDays, setSlaDays] = useState('');
   const [appealDays, setAppealDays] = useState('');
   const [rule, setRule] = useState('member_join');
+  /**
+   * Three states, not two. `null` means nobody has answered yet, which is the
+   * one the setup checklist is asking about — collapsing it to false would tick
+   * the box for every ministry that has never seen this screen.
+   */
+  const [publishRatio, setPublishRatio] = useState<boolean | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +64,8 @@ export function CommitmentSettings({ canEdit }: { canEdit: boolean }) {
     setSlaDays(String(org.sla_days ?? 17));
     setAppealDays(String(org.appeal_sla_days ?? 30));
     setRule(String(org.governing_version_rule ?? 'member_join'));
+    const brand = (org.brand ?? {}) as { publish_share_ratio?: unknown };
+    setPublishRatio(typeof brand.publish_share_ratio === 'boolean' ? brand.publish_share_ratio : null);
   }, [data?.org]);
 
   async function save() {
@@ -67,6 +75,15 @@ export function CommitmentSettings({ canEdit }: { canEdit: boolean }) {
         sla_days: Number(slaDays),
         appeal_sla_days: Number(appealDays),
         governing_version_rule: rule,
+        // Merged rather than replaced: brand holds the colour, the typeface and
+        // the wordmark too, and a bare object here would wipe a ministry's
+        // whole identity from a page about turnaround times.
+        brand: {
+          ...((data?.org.brand ?? {}) as Record<string, unknown>),
+          // Written only once answered, so "declined" and "never asked" stay
+          // distinguishable in the database as well as on screen.
+          ...(publishRatio === null ? {} : { publish_share_ratio: publishRatio }),
+        },
       });
       // The setup checklist watches for these being *chosen*, so it has to be
       // refetched here — the columns already had values and nothing else would
@@ -155,6 +172,59 @@ export function CommitmentSettings({ canEdit }: { canEdit: boolean }) {
             correctly is never reported as a finding against you. Set this to whatever your
             guidelines actually say.
           </p>
+        </div>
+
+        {/* The transparency decision.
+            Deliberately three states with no default selected. A pre-ticked box
+            would make publishing a ministry's own financial figures something
+            that happened to them rather than something they chose, which is the
+            opposite of what this product argues for everywhere else. */}
+        <div className="space-y-2">
+          <Label>Publish your share ratio</Label>
+          <p className="text-xs text-muted-foreground">
+            Of every dollar members contributed, how many cents reached their medical costs. This
+            decides whether the figure appears on your own website and at your public transparency
+            address. It changes nothing about how it is calculated, or what your staff see.
+          </p>
+          <div className="space-y-2 pt-1">
+            {[
+              {
+                value: true,
+                label: 'Yes — publish it',
+                detail:
+                  'The figure appears on your site and at a public address anyone can check. ' +
+                  'A ministry that clears a bar it is not held to has said something no marketing ' +
+                  'page can.',
+              },
+              {
+                value: false,
+                label: 'No — keep it internal',
+                detail:
+                  'Your staff and board still see it in full. Nothing is published, and the ' +
+                  'share-ratio section simply does not appear on your website.',
+              },
+            ].map((option) => (
+              <label key={String(option.value)} className="flex gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="publish-share-ratio"
+                  checked={publishRatio === option.value}
+                  onChange={() => setPublishRatio(option.value)}
+                  disabled={!canEdit}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="font-medium">{option.label}</span>
+                  <span className="block text-xs text-muted-foreground">{option.detail}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {publishRatio === null && (
+            <p className="text-xs text-amber-700 dark:text-amber-500">
+              Not answered yet. Until it is, the figure stays off your website.
+            </p>
+          )}
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}

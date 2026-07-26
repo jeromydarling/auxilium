@@ -536,6 +536,13 @@ export interface TriageItem {
     last_contact_at: string | null;
   };
   compass: Compass;
+  /**
+   * The two values the board orders equal scores by, sent so the row can *show*
+   * them. A ranking a staff member cannot see the basis for is indistinguishable
+   * from an arbitrary one, which is the whole thing this product argues against.
+   */
+  reason_count: number;
+  waiting_since: string | null;
 }
 
 export interface Nudge {
