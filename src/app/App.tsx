@@ -26,6 +26,7 @@ import { CommandCenterPage } from '@/routes/CommandCenterPage';
 import { KnowledgePage } from '@/routes/KnowledgePage';
 import { KnowledgeArticlePage } from '@/routes/KnowledgeArticlePage';
 import { SettingsPage } from '@/routes/SettingsPage';
+import { SiteBuilder } from '@/features/cms/SiteBuilder';
 import { RulesPage } from '@/routes/RulesPage';
 import { IntegrityPage } from '@/routes/IntegrityPage';
 import { EscalationsPage } from '@/routes/EscalationsPage';
@@ -152,6 +153,7 @@ function AppRoutes() {
         {/* Slugs carry a slash — "member/your-rights" — so this captures the
             rest of the path rather than a single segment. */}
         <Route path="/knowledge/*" element={<KnowledgeArticlePage />} />
+        <Route path="/site" element={<SiteBuilder />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/rules" element={<RulesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Home, Upload, HeartHandshake, HandHeart,
-  Compass, Settings, LogOut, ShieldCheck, Scale, Siren, BookOpen, Inbox,
+  Compass, Settings, LogOut, ShieldCheck, Scale, Siren, BookOpen, Inbox, Globe,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,7 @@ const NAV_GROUPS: { label: string; items: { to: string; label: string; icon: typ
   {
     label: 'Administration',
     items: [
+      { to: '/site', label: 'Your site', icon: Globe },
       { to: '/settings', label: 'Settings', icon: Settings },
       { to: '/settings/rules', label: 'NRI rules', icon: ShieldCheck },
     ],

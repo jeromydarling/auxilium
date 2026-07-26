@@ -259,10 +259,19 @@ export const api = {
   },
 
   cms: {
+    /** The editor's whole view — pages, live data, review, publish state. */
+    site: () => get<SiteView>('/cms/site'),
+    initSite: () => post<{ pages: number }>('/cms/site/init', {}),
+    publishSite: (published: boolean) => patch<{ published: boolean }>('/cms/site', { published }),
+    checkSlug: (slug: string) => get<{ ok: boolean; reason?: string }>(`/cms/site/slug/${slug}`),
+    setSlug: (slug: string) => patch<{ slug: string }>('/cms/site/slug', { slug }),
+
     pages: () => get<{ items: CmsPageSummary[] }>('/cms/pages'),
     page: (id: string) => get<{ page: CmsPageRecord }>(`/cms/pages/${id}`),
     createPage: (body: Record<string, unknown>) => post<{ id: string; slug: string }>('/cms/pages', body),
     updatePage: (id: string, body: Record<string, unknown>) => patch<{ ok: true }>(`/cms/pages/${id}`, body),
+    deletePage: (id: string) => del<{ ok: true }>(`/cms/pages/${id}`),
+    reorder: (ids: string[]) => post<{ ok: true }>('/cms/pages/reorder', { ids }),
   },
 };
 
@@ -572,6 +581,30 @@ export interface CmsPageSummary {
 
 export interface CmsPageRecord extends CmsPageSummary {
   blocks: Record<string, unknown>[];
+}
+
+/**
+ * The site editor's view.
+ *
+ * Block and context shapes are imported from the pure layer rather than
+ * restated here. A second definition of what a block is would drift from the
+ * one the renderer uses, and the symptom would be a preview that does not match
+ * the published page — the exact failure the whole design is arranged to avoid.
+ */
+export interface SiteView {
+  org: { name: string; slug: string };
+  published_at: string | null;
+  public_url: string;
+  brand: import('./brand/tokens').ResolvedBrand;
+  context: import('./cms/blocks').SiteContext;
+  pages: (import('./cms/blocks').SitePage & {
+    id: string | null;
+    status: string;
+    position: number;
+    resolved: import('./cms/blocks').ResolvedBlock[];
+  })[];
+  nav: { slug: string; title: string }[];
+  issues: import('./cms/blocks').SiteIssue[];
 }
 
 // ── Integrity and claims shapes ──────────────────────────────────────────────

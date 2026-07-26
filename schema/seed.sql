@@ -346,13 +346,58 @@ VALUES
    14, 13, 1, 0, 12, 1, 0,
    datetime('now', '-240 days'), datetime('now', '-240 days'), datetime('now', '-240 days'));
 
--- ── A portal page for the white-label CMS shell ──────────────────────────────
+-- ── The ministry's public site ───────────────────────────────────────────────
+--
+-- Shelter Valley's site, published, at /shelter-valley. Deliberately the
+-- template's own four pages with the ministry's own words edited in, because
+-- that is what a real ministry's site looks like a fortnight after signing up —
+-- and because it means the demo exercises every block type including the three
+-- live ones, whose whole design is what they do when the data is or is not
+-- there.
+--
+-- The share_ratio and guidelines blocks carry no copy on purpose. They render
+-- from the ledger and the guideline table seeded above, so what a visitor sees
+-- at /shelter-valley is the same 87.1% the integrity report computes.
 
-INSERT INTO cms_pages (id, org_id, slug, title, blocks, status, published_at, created_at, updated_at)
+INSERT INTO cms_pages (id, org_id, slug, title, blocks, status, nav, position, published_at, created_at, updated_at)
 VALUES
-  ('page_demo_welcome', 'org_demo_shelter_valley', 'welcome', 'Welcome to Shelter Valley',
-   '[{"type":"hero","heading":"Carrying one another''s burdens","subheading":"A community of families sharing medical costs together.","ctaLabel":"See how sharing works","ctaHref":"/how-it-works"},{"type":"richText","body":"Shelter Valley is not insurance. We are a community of households who commit to sharing one another''s medical costs directly."},{"type":"faq","items":[{"question":"What happens when I have a medical need?","answer":"Submit it through your member portal. A named member of our care team reviews it and tells you the timeline within a week."},{"question":"How is my monthly share calculated?","answer":"By household size and the sharing tier you chose when you joined."}]}]',
-   'published', datetime('now', '-120 days'), datetime('now', '-130 days'), datetime('now', '-120 days'));
+  ('page_demo_home', 'org_demo_shelter_valley', 'home', 'Home',
+   '[{"id":"sv_hero","type":"hero","heading":"Carrying one another''s burdens","body":"Shelter Valley is a community of households who help carry each other''s medical bills. This is not insurance, and that difference is worth understanding before you join rather than after."},{"id":"sv_apply_1","type":"apply"},{"id":"sv_steps","type":"steps","heading":"How it works","items":[{"title":"You contribute monthly","body":"A set amount each month, shared with households who have medical needs."},{"title":"You submit a bill","body":"When you have a medical cost, you send it in and it gets a due date immediately."},{"title":"A person reviews it","body":"Not an algorithm. You can see which stage it is at and whether anyone has opened it."},{"title":"It is shared, or it is not","body":"Either way you are told why, with the guideline provision behind the decision."}]},{"id":"sv_ratio","type":"share_ratio"}]',
+   'published', 0, 0, datetime('now', '-120 days'), datetime('now', '-130 days'), datetime('now', '-120 days')),
+
+  ('page_demo_shared', 'org_demo_shelter_valley', 'what-is-shared', 'What is and is not shared',
+   '[{"id":"sv_shared_prose","type":"prose","heading":"Be specific here","body":"Most medical costs above your household''s initial unshared amount are eligible: hospitalisation, surgery, maternity after the waiting period, diagnostics, and emergency care.\n\nSome things are not. Elective cosmetic procedures are not shared. Conditions you were treated for in the twenty-four months before joining are not shared for the first twelve months of membership, and we will tell you at application which of yours those are rather than at your first need."},{"id":"sv_guidelines","type":"guidelines"}]',
+   'published', 1, 1, datetime('now', '-120 days'), datetime('now', '-130 days'), datetime('now', '-120 days')),
+
+  ('page_demo_joining', 'org_demo_shelter_valley', 'membership', 'Joining',
+   '[{"id":"sv_join_prose","type":"prose","heading":"What we ask of members","body":"We ask that you contribute every month, that you tell us about a need early rather than once it has gone to collections, and that you answer honestly about your health at application.\n\nWe do not ask you to attend a particular church, and we do not ask you to sign a statement of faith."},{"id":"sv_apply_2","type":"apply"}]',
+   'published', 1, 2, datetime('now', '-120 days'), datetime('now', '-130 days'), datetime('now', '-120 days')),
+
+  ('page_demo_faq', 'org_demo_shelter_valley', 'faq', 'Questions',
+   '[{"id":"sv_faq","type":"faq","heading":"Common questions","items":[{"title":"Is this insurance?","body":"No. Sharing is voluntary and is not guaranteed, and you remain personally responsible for your own medical bills. That is the honest answer and every ministry has to give it."},{"title":"What happens if a bill is not shared?","body":"You are told why, with the guideline provision behind it, and you can appeal. Appeals succeed more often than people expect and are attempted far less often than they should be."},{"title":"How long does a decision take?","body":"We commit to seventeen days from when we receive your bill. You can see where yours is at any time, and we escalate internally before the deadline rather than after it."},{"title":"How is my monthly share calculated?","body":"By household size and the sharing tier you chose when you joined."}]}]',
+   'published', 1, 3, datetime('now', '-120 days'), datetime('now', '-130 days'), datetime('now', '-120 days'));
+
+UPDATE organizations SET site_published_at = datetime('now', '-120 days')
+ WHERE id = 'org_demo_shelter_valley';
+
+-- ── A published application form ─────────────────────────────────────────────
+--
+-- Published, so the demo exercises the whole path a stranger actually takes:
+-- the ministry site at /shelter-valley, the apply block on it, the public form,
+-- and the applications board. An unpublished form would leave the apply block
+-- correctly absent — correct, and a worse demo, since the one thing a ministry
+-- evaluating this wants to see is somebody arriving from outside.
+--
+-- Sections are the platform default deliberately: no statement of faith, no
+-- health questions. Shelter Valley is the well-run ministry, and the default is
+-- what a well-run ministry that has not customised anything yet would have.
+
+INSERT INTO application_forms (id, org_id, version, intro, sections, published_at, created_at, updated_at)
+VALUES
+  ('afm_demo_shelter', 'org_demo_shelter_valley', 1,
+   'This is an application to join, not an agreement to share. Everything you tell us here is reviewed by a person, and we will come back to you either way.',
+   '[{"key":"membership","title":"Your membership","description":"What you are applying for.","fields":[{"key":"program","label":"Which program are you applying for?","type":"select","required":true,"help":"If you are not sure, pick the closest one — we will confirm it with you.","options":[{"value":"standard","label":"Standard"},{"value":"not_sure","label":"I am not sure yet"}]},{"key":"previous_coverage","label":"What do you have now?","type":"select","required":false,"options":[{"value":"none","label":"Nothing at the moment"},{"value":"insurance","label":"Health insurance"},{"value":"sharing","label":"Another sharing ministry"},{"value":"other","label":"Something else"}]}]},{"key":"agreements","title":"What you are agreeing to","description":"These are the things every applicant is asked to confirm.","fields":[{"key":"understands_not_insurance","label":"I understand this is not insurance, that sharing is not guaranteed, and that I remain personally responsible for my own medical bills.","type":"checkbox","required":true},{"key":"tobacco","label":"Has anyone joining used tobacco or nicotine in the last twelve months?","type":"select","required":true,"options":[{"value":"no","label":"No"},{"value":"yes","label":"Yes"}]},{"key":"anything_else","label":"Anything else we should know?","type":"textarea","required":false,"help":"Optional. Some people use this to explain a situation a form has no box for."}]}]',
+   datetime('now', '-150 days'), datetime('now', '-160 days'), datetime('now', '-150 days'));
 
 -- ── Recompute the denormalized household counts from the actual links ────────
 -- Familia scoring reads these columns, so they must never disagree with

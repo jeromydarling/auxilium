@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 445 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 478 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -236,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-445 tests over the logic that carries the risk: NRI scoring, integrity and
+478 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -755,9 +755,100 @@ production is a lie that gets discovered by a member. And it previews a member
 surface — a bill, a due date, a button — rather than swatches, because a row of
 colour chips tells a ministry nothing about whether their brand works.
 
-**Still to build:** the CMS site templates and block editing, the public
-ministry site at `/{slug}`, custom domains, and the asset generator. The token
-layer is the foundation all four sit on.
+**Still to build:** custom domains and the asset generator. The token layer is
+the foundation both sit on.
+
+---
+
+## The ministry site
+
+Every ministry gets a public website at `/{slug}`, server-rendered from this
+same Worker in the ministry's own brand. It is not a general website builder:
+ministries do not need another Squarespace, and one built here would lose to
+Squarespace. What they need is the six or seven pages this category actually
+requires, written well, wired to the product so they cannot go stale.
+
+| | |
+|---|---|
+| `src/lib/cms/blocks.ts` | Block shapes, the template, reserved slugs, live resolution, review. Pure. |
+| `workers/lib/site-service.ts` | D1 → pages + brand + live context |
+| `workers/marketing/ministry.ts` | The public renderer |
+| `workers/api/cms.ts` | The editor's API |
+| `src/features/cms/SiteBuilder.tsx` | The builder, at `/site` |
+| `schema/migrations/0011_site.sql` | `nav`, `position`, `site_published_at`, `custom_domain` |
+
+**Templates first, blocks second.** A ministry starts from four pages that are
+already right and edits sentences, rather than from an empty canvas. Given a
+blank page most ministries produce something worse than the template. The one
+page that earns its place on argument alone is *what is and is not shared* —
+vagueness there is the single biggest source of the decline nobody saw coming.
+
+**Three blocks are live.** `share_ratio`, `guidelines`, and `apply` hold no copy;
+they render from the ledger, the guideline table, and the published application
+form. A ministry that hand-types its share ratio has a wrong number on its
+website within a quarter, and the wrong number is the one a journalist
+screenshots. Live blocks cannot drift because there is nothing to drift from.
+
+**The published ratio is the integrity report's own number**, from
+`gatherIntegrityFacts` — not a second query that means roughly the same thing.
+Two numbers for one fact is what this product spends the rest of its time
+arguing against, and a ministry whose website and dashboard disagree about where
+the money went has been handed the exact problem it bought the software to
+avoid.
+
+**A live block with no data behind it is dropped, not rendered empty.** A "Share
+ratio" heading over a dash reads to a visitor as a ministry with something to
+hide. The editor runs the same resolution, so a ministry sees the section
+missing — with the specific thing to go and do — while it can still be fixed.
+`reviewSite` names the gap in terms of the action ("record a month of
+contributions"), because "no data" is not actionable.
+
+**The guidelines block reads the ministry's declared governing rule.**
+Ministries publish four different answers to *which version binds a member* and
+all four are in real use, so the sentence on a public page is rendered from
+`organizations.governing_version_rule` rather than assumed. Undeclared says
+nothing at all: scoring falls back to the strictest reading, but stating that
+reading publicly would put words in a ministry's mouth.
+
+**Publishing is a decision about the site, not about a page.** A ministry
+building its first site has pages in every state for a fortnight. When
+publishing a page was the same act as launching, the public address started
+answering the moment somebody clicked publish on a draft — with one page and no
+navigation. Nobody decided to launch; the schema did. Everything in
+`reviewSite` is a warning except one: a site with no `home` page publishes a
+front door that 404s, and that blocks.
+
+**The preview is the published page**, from the same `resolveSite` under the
+same `brandCss`. A test pins the corollary that caught the one real bug here: a
+block with an action *label* and no *href* drew a button in the preview and
+nothing at all on the published page.
+
+**The stylesheet is deliberately not the marketing site's.** Reusing Auxilium's
+design system would make every ministry's site look like an Auxilium page with a
+different accent, which is the opposite of a white label. And the rule about
+JavaScript is stricter here than on the marketing site: there is none. Exactly
+one `h1` per page — the first block's heading — because a page whose every
+section is an `h1` is the most common way a block editor produces something a
+screen reader cannot be navigated by.
+
+**Reserved slugs are checked twice**, at rename and at request. The two guards
+protect against different things: the rename guard stops a ministry taking
+`/security` today, and the request guard stops a ministry that took a slug
+before the marketing site had a page there from shadowing it tomorrow.
+`renderMinistry` runs only after the content registry misses, so Auxilium's own
+pages always win a collision.
+
+**The disclaimer is in the renderer, not the template.** "Not insurance,
+sharing is not guaranteed, you remain personally responsible" appears in the
+footer of every page and a ministry cannot edit it out — not as a legal shield
+for Auxilium, but because a visitor who misses it is the person this whole
+product exists to stop being blindsided.
+
+**Ministry pages are in Auxilium's own sitemap.** They share the origin, so a
+separate sitemap nothing links to would leave a ministry with a website that
+does not work as a website. Both halves of the filter matter: a published page
+on an unlaunched site must not appear, and neither must a draft on a launched
+one.
 
 ---
 
@@ -1168,8 +1259,10 @@ weights so the worst case is distinguishable from the merely urgent.
 A daily digest of urgent members, with one-click unsubscribe, is the highest-value
 addition — most missed follow-ups happen because nobody opened the dashboard.
 
-**The CMS block editor.** Pages, blocks, draft/publish, and a public read
-endpoint all exist. The visual builder does not.
+**Custom domains.** `organizations.custom_domain` exists with a unique index
+and nothing reads it yet. Cloudflare for SaaS is the mechanism; the routing seam
+is `renderMinistry`, which currently resolves a ministry from the first path
+segment and would resolve it from the `Host` header instead.
 
 **Team invites.** `admin/users` creates users with a password; a tokened invite
 where the invitee sets their own is the right pattern.

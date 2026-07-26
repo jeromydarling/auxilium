@@ -3,6 +3,10 @@ import type { Env } from '../lib/env';
 import { ALL_PAGES, pageBySlug, pathFor, guides, comparisons } from '../../src/content/registry';
 import { SITE } from '../../src/content/meta';
 import { renderPage } from './render';
+import { renderMinistryPage, renderMinistryNotFound } from './ministry';
+import { loadSite } from '../lib/site-service';
+import { all } from '../lib/db';
+import { RESERVED_SLUGS } from '../../src/lib/cms/blocks';
 
 /**
  * Public marketing routes.
@@ -52,21 +56,52 @@ marketing.get('/robots.txt', (c) => {
  * Generated from the registry, so a page cannot exist without appearing here
  * and an entry cannot outlive the page it points at.
  */
-marketing.get('/sitemap.xml', (c) => {
+marketing.get('/sitemap.xml', async (c) => {
   const origin = originOf(c.req.url);
 
   const urls = ALL_PAGES.map((page) => `  <url>
     <loc>${origin}${pathFor(page.slug)}</loc>
     <lastmod>${page.updated}</lastmod>
     <priority>${page.priority.toFixed(1)}</priority>
-  </url>`).join('\n');
+  </url>`);
+
+  // Ministry sites share this origin, so they belong in this sitemap rather
+  // than in one nothing links to. A ministry that builds a site here and then
+  // finds it is not indexed has been sold a website that does not work as a
+  // website — and the first thing most of them will check is whether Google
+  // can find it.
+  for (const row of await publishedMinistryPages(c.env)) {
+    urls.push(`  <url>
+    <loc>${origin}/${row.org_slug}${row.slug === 'home' ? '' : `/${row.slug}`}</loc>
+    <lastmod>${row.updated_at.slice(0, 10)}</lastmod>
+    <priority>0.6</priority>
+  </url>`);
+  }
 
   return c.body(
-    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`,
+    `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>`,
     200,
     { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': HTML_CACHE },
   );
 });
+
+/**
+ * Published pages of published sites, across every ministry.
+ *
+ * Both halves of that matter: a page marked published on a site nobody has
+ * launched must not appear, and neither must a draft on a launched site.
+ * Failing open here would index a ministry's half-written page.
+ */
+async function publishedMinistryPages(env: Env) {
+  return all<{ org_slug: string; slug: string; updated_at: string }>(
+    env.DB,
+    `SELECT o.slug AS org_slug, p.slug, p.updated_at
+       FROM cms_pages p JOIN organizations o ON o.id = p.org_id
+      WHERE p.status = 'published' AND p.deleted_at IS NULL
+        AND o.site_published_at IS NOT NULL AND o.deleted_at IS NULL
+      ORDER BY o.slug, p.position`,
+  );
+}
 
 /**
  * llms.txt — a plain-language, link-rich summary for assistants.
@@ -196,16 +231,70 @@ marketing.get('/', (c) => renderSlug(c, ''));
 marketing.get('/:a', (c) => renderSlug(c, c.req.param('a')));
 marketing.get('/:a/:b', (c) => renderSlug(c, `${c.req.param('a')}/${c.req.param('b')}`));
 
-function renderSlug(c: Context<{ Bindings: Env }>, slug: string) {
-  const moved = MOVED[slug.replace(/^\/+|\/+$/g, '')];
+async function renderSlug(c: Context<{ Bindings: Env }>, slug: string) {
+  const clean = slug.replace(/^\/+|\/+$/g, '');
+
+  const moved = MOVED[clean];
   if (moved) return c.redirect(moved, 301);
 
   const page = pageBySlug(slug);
-  // Not a registered page — fall through to the Worker's notFound, which is
-  // what routes /app/* to the SPA.
-  if (!page) return c.notFound();
+  if (page) {
+    return c.html(renderPage(page, originOf(c.req.url)), 200, { 'Cache-Control': HTML_CACHE });
+  }
 
-  return c.html(renderPage(page, originOf(c.req.url)), 200, { 'Cache-Control': HTML_CACHE });
+  // Not ours. It may be a ministry's.
+  const ministry = await renderMinistry(c, clean);
+  if (ministry) return ministry;
+
+  // Neither — fall through to the Worker's notFound, which is what routes
+  // /app/* to the SPA and answers everything else with a real 404.
+  return c.notFound();
+}
+
+/**
+ * The ministry site at /{slug}.
+ *
+ * Tried only after the registry misses, so Auxilium's own pages always win a
+ * collision. `RESERVED_SLUGS` is checked here as well as at rename, because the
+ * two guards protect against different things: the rename guard stops a
+ * ministry taking `/security` today, and this stops a ministry that took a slug
+ * before the marketing site had a page there from shadowing it tomorrow. The
+ * cost of the extra check is one Set lookup; the cost of missing it is
+ * Auxilium's own page becoming unreachable with nothing in the logs.
+ */
+async function renderMinistry(c: Context<{ Bindings: Env }>, path: string) {
+  const [orgSlug, pageSlug = 'home', ...rest] = path.split('/');
+  if (!orgSlug || rest.length > 0 || RESERVED_SLUGS.has(orgSlug)) return null;
+  // Shape-checked before the query so a flood of junk paths cannot turn a 404
+  // into a database round trip each.
+  if (!/^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/.test(orgSlug)) return null;
+  if (!/^[a-z0-9][a-z0-9-]{0,60}$/.test(pageSlug)) return null;
+
+  const site = await loadSite(c.env, { slug: orgSlug }, { published: true });
+  if (!site) return null;
+
+  const page = site.pages.find((p) => p.slug === pageSlug);
+
+  // The ministry exists but this address does not. Answering in the ministry's
+  // own brand with its own navigation is worth the extra render: a visitor who
+  // followed a stale link is one click from what they were looking for, rather
+  // than staring at Auxilium's 404 wondering whether the ministry is real.
+  if (!page) {
+    return c.html(renderMinistryNotFound(toMinistrySite(site)), 404, { 'Cache-Control': 'no-store' });
+  }
+
+  return c.html(
+    renderMinistryPage(toMinistrySite(site), page, originOf(c.req.url)),
+    200,
+    // Shorter than the marketing TTL. These pages carry a live share ratio, and
+    // a stale number on a ministry's own site is the one thing this product
+    // cannot be relaxed about.
+    { 'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600' },
+  );
+}
+
+function toMinistrySite(site: NonNullable<Awaited<ReturnType<typeof loadSite>>>) {
+  return { org: { name: site.org.name, slug: site.org.slug }, brand: site.brand, pages: site.pages, ctx: site.ctx };
 }
 
 export default marketing;
