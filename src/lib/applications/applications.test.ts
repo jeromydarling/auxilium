@@ -5,6 +5,9 @@ import {
 } from './schema';
 import { validateApplication, pruneAnswers } from './validate';
 import { scoreSubmission } from './spam';
+import {
+  DEFAULT_HEALTH_FORM, validateDisclosure, lookbackLabel, disclosureProgress,
+} from './health';
 
 const GOOD: ApplicationSubmission = {
   spine: {
@@ -249,5 +252,92 @@ describe('turning a household into records', () => {
     // "other" reads as a deliberate classification. A word we simply did not
     // recognise is not one.
     expect(classifyRelationship('housemate', '1979-02-02', NOW).relationship).toBe('member');
+  });
+});
+
+describe('the second-stage health disclosure', () => {
+  const F = DEFAULT_HEALTH_FORM;
+
+  it('is not reachable from the public form', () => {
+    // The whole point of splitting it out. If health questions ever appear in
+    // the application default, medical history is being collected over an
+    // unauthenticated endpoint again.
+    const publicText = JSON.stringify(DEFAULT_FORM).toLowerCase();
+    for (const q of F.questions) {
+      expect(publicText).not.toContain(q.key);
+    }
+  });
+
+  it('needs every question answered', () => {
+    const issues = validateDisclosure(F, { answers: {} });
+    expect(issues).toHaveLength(F.questions.length);
+  });
+
+  it('accepts a straightforward no', () => {
+    // A "no" is never questioned. Pressing somebody to justify one turns this
+    // into an interrogation, and the honest answer to most of these is no.
+    const answers = Object.fromEntries(F.questions.map((q) => [q.key, { answer: false }]));
+    expect(validateDisclosure(F, { answers })).toEqual([]);
+  });
+
+  it('refuses a bare yes', () => {
+    // "Yes" alone is not something a ministry can act on and not something a
+    // member can be held to — an answer that looks like a disclosure and
+    // functions as nothing.
+    const answers = Object.fromEntries(F.questions.map((q) => [q.key, { answer: false }]));
+    answers.diagnosis = { answer: true };
+    const issues = validateDisclosure(F, { answers });
+    expect(issues.map((i) => i.path)).toEqual(['diagnosis']);
+  });
+
+  it('accepts a yes with detail', () => {
+    const answers: Record<string, { answer: boolean; detail?: string }> =
+      Object.fromEntries(F.questions.map((q) => [q.key, { answer: false }]));
+    answers.diagnosis = { answer: true, detail: 'Type 2 diabetes, diagnosed 2021, controlled with metformin.' };
+    expect(validateDisclosure(F, { answers })).toEqual([]);
+  });
+
+  it('states the lookback window in words a member reads', () => {
+    expect(lookbackLabel(24)).toBe('the last 2 years');
+    expect(lookbackLabel(12)).toBe('the last year');
+    expect(lookbackLabel(18)).toBe('the last 18 months');
+  });
+
+  it('does not ship somebody else’s exclusion list', () => {
+    // Regulators have collected what ministries treat as pre-existing — asthma,
+    // diabetes, sleep apnea, autism. A default that ticks those off invites a
+    // ministry to adopt exclusions it never decided on.
+    const text = JSON.stringify(F).toLowerCase();
+    for (const condition of ['asthma', 'diabetes', 'sleep apnea', 'autism', 'hiv', 'cerebral']) {
+      expect(text, `default health form names "${condition}"`).not.toContain(condition);
+    }
+  });
+
+  it('treats a partly-disclosed household as not disclosed', () => {
+    // Treating "most of them" as done is how a need gets declined over a person
+    // nobody asked about, discovered at the worst possible moment.
+    const p = disclosureProgress(['m1', 'm2', 'm3'], [
+      { member_id: 'm1', answers: {}, completed_at: '2026-07-01' },
+      { member_id: 'm2', answers: {} },
+    ]);
+    expect(p.done).toBe(1);
+    expect(p.total).toBe(3);
+    expect(p.complete).toBe(false);
+    expect(p.outstanding).toEqual(['m2', 'm3']);
+  });
+
+  it('is complete only when everyone has finished', () => {
+    const p = disclosureProgress(['m1', 'm2'], [
+      { member_id: 'm1', answers: {}, completed_at: 'x' },
+      { member_id: 'm2', answers: {}, completed_at: 'y' },
+    ]);
+    expect(p.complete).toBe(true);
+    expect(p.outstanding).toEqual([]);
+  });
+
+  it('is not complete for an empty household', () => {
+    // Zero of zero is not "everyone has disclosed" — it is a household we know
+    // nothing about, and reporting it as done would be the wrong way round.
+    expect(disclosureProgress([], []).complete).toBe(false);
   });
 });

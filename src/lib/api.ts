@@ -210,6 +210,11 @@ export const api = {
     changePassword: (current: string, next: string) =>
       post<{ ok: true }>('/member/password', { current, next }),
     claims: () => get<{ claims: MemberClaim[] }>('/member/claims'),
+    healthDisclosure: () => get<HealthDisclosureResponse>('/member/health-disclosure'),
+    saveHealthDisclosure: (body: {
+      answers: Record<string, { answer: boolean; detail?: string }>;
+      submit?: boolean;
+    }) => post<{ ok: true; submitted?: boolean; corrected?: boolean }>('/member/health-disclosure', body),
     claim: (id: string) => get<MemberClaimDetail>(`/member/claims/${id}`),
   },
 
@@ -976,6 +981,38 @@ export interface PublicApplicationForm {
 }
 
 export interface ApplicationIssue {
+  path: string;
+  message: string;
+}
+
+// ── Health disclosure ────────────────────────────────────────────────────────
+
+export interface HealthQuestion {
+  key: string;
+  prompt: string;
+  help?: string;
+  wantsDetail?: boolean;
+}
+
+export interface HealthDisclosureResponse {
+  form: {
+    version: number;
+    lookback_months: number;
+    /** Already rendered into words by the server — "the last 2 years". */
+    lookbackLabel: string;
+    extended: { label: string; months: number }[];
+    intro?: string;
+    questions: HealthQuestion[];
+  };
+  disclosure: {
+    answers: Record<string, { answer: boolean; detail?: string }>;
+    completed_at: string | null;
+    /** The window they actually answered under, not today's. */
+    lookback_months: number;
+  } | null;
+}
+
+export interface DisclosureIssue {
   path: string;
   message: string;
 }

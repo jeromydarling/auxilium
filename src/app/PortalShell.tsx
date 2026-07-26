@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { BookOpen, FileText, LogOut, ShieldQuestion } from 'lucide-react';
+import { BookOpen, FileText, HeartPulse, LogOut, ShieldQuestion } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useMemberAuth } from './MemberAuthContext';
@@ -7,7 +7,7 @@ import { useMemberAuth } from './MemberAuthContext';
 /**
  * The member portal shell.
  *
- * Three destinations, and no more. A member is not an operator of this
+ * Four destinations, and no more. A member is not an operator of this
  * software: they are here because something is happening to a medical bill and
  * they want to know what. Every additional navigation item is one more thing
  * between a frightened person and the answer.
@@ -20,6 +20,7 @@ import { useMemberAuth } from './MemberAuthContext';
  */
 const NAV = [
   { to: '/portal', label: 'Your bills', icon: FileText, end: true },
+  { to: '/portal/health', label: 'Your health', icon: HeartPulse, end: false },
   { to: '/portal/rights', label: 'Your rights', icon: ShieldQuestion, end: false },
   { to: '/portal/knowledge', label: 'Answers', icon: BookOpen, end: false },
 ];

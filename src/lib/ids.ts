@@ -39,6 +39,8 @@ const PREFIXES = {
   memberInvite: 'minv',
   application: 'app',
   applicationForm: 'appf',
+  healthDisclosure: 'hdis',
+  healthForm: 'hdf',
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

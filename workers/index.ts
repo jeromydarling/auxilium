@@ -91,7 +91,21 @@ app.get('/api/health', async (c) => {
       ? 'ok'
       : 'partial — STRIPE_WEBHOOK_SECRET is unset, so settled payments will not be recorded';
 
-  const healthy = checks.d1 === 'ok';
+  // Sessions.
+  //
+  // Without SESSION_SECRET, production refuses to issue one — a predictable
+  // signing key in production is worse than an outage. That refusal is correct
+  // and deliberate, but it was invisible here: health reported "ok" while not a
+  // single person, staff or member, could log in. A green check on an app
+  // nobody can sign into is worse than no check, because it sends whoever is
+  // debugging to look everywhere else first.
+  checks.sessions = c.env.SESSION_SECRET
+    ? 'ok'
+    : c.env.APP_ENV === 'production'
+      ? 'SESSION_SECRET is unset — nobody can sign in. Set it with: wrangler secret put SESSION_SECRET --env production'
+      : 'development key (fine locally, never in production)';
+
+  const healthy = checks.d1 === 'ok' && !checks.sessions.startsWith('SESSION_SECRET is unset');
 
   return c.json(
     {

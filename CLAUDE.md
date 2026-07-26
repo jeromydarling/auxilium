@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 415 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 425 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -236,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-415 tests over the logic that carries the risk: NRI scoring, integrity and
+425 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -264,7 +264,7 @@ Auxilium runs fully with no third-party keys and no paid plan:
 | `ANTHROPIC_API_KEY` | AI triage notes show "not configured". **Scoring is unaffected** — it is never AI-dependent. |
 | Queues (free plan) | Imports commit inline; signals recompute inline. Logged, not silent. |
 | KV unavailable | Login rate limiting fails **open**. A broken limiter must never lock a ministry out on the day it matters. |
-| `SESSION_SECRET` | Dev uses a fixed key with a loud warning. **Production refuses to issue sessions.** |
+| `SESSION_SECRET` | Dev uses a fixed key with a loud warning. **Production refuses to issue sessions** — every login 500s, staff and member alike. `/api/health` reports this and goes `degraded`; it used to say `ok` while nobody could sign in, which sent whoever was debugging to look everywhere else first. |
 | `STRIPE_SECRET_KEY` | Billing is **off, not broken**. Connect and invoicing answer "not configured"; the ledger, share ratio, scoring, and claims are untouched. |
 | `STRIPE_WEBHOOK_SECRET` | The webhook **refuses every request**. An unsigned webhook that writes to the ledger would let anyone fabricate settled contributions, so refusing is the only safe answer. `/api/health` reports this as `partial`, because a key without a webhook secret takes payments and never records them. |
 
@@ -773,15 +773,47 @@ here — the point is that a stranger who found the ministry can apply. Instead:
   legitimate applicant, fails hardest for people on poor connections and screen
   readers, and is defeated cheaply.
 
-**Health disclosure is not on the public form.** Pre-existing questions are the
-most sensitive thing a ministry collects and the exact material a decline gets
-argued over — collecting them from an anonymous stranger over an
-unauthenticated POST is the hardest thing here to defend, and it is avoidable.
-Once accepted, the household has portal credentials and discloses signed in,
-against a known account, with an audit trail. The cost is two steps. **The
-second-stage disclosure UI is not built yet** — the boundary is enforced (the
-default form is tested to contain nothing medical) but the follow-up form is
-outstanding.
+### Health disclosure, the second stage
+
+`src/lib/applications/health.ts`, `/app/portal/health`. Deliberately not on the
+public form: pre-existing questions are the most sensitive thing a ministry
+collects and the exact material a decline gets argued over, and collecting them
+from an anonymous stranger over an unauthenticated POST is avoidable. A member
+answers signed in, about themselves, and it is audited. A test asserts the
+public form contains none of these question keys, so the boundary cannot erode
+quietly.
+
+**Per person, never per household.** A pre-existing condition belongs to one
+member; recording it against a household would let a spouse's diagnosis limit a
+child's need, which is not how any published guideline works.
+
+**The lookback window is in the question.** Twenty-four months at some
+ministries, thirty-six at others, sixty for cancer at one. "Have you had any of
+the following" means something different at each, so the window is rendered into
+the question rather than left as a footnote — and every stored disclosure keeps
+the window it was answered under, because a "no" to a two-year question is not a
+"no" to a three-year one.
+
+**A yes always asks what.** A bare yes is not something a ministry can act on
+and not something a member can be held to. A no is never questioned — pressing
+somebody to justify one turns this into an interrogation, and the honest answer
+to most of these is no.
+
+**Corrections supersede; nothing is erased.** `supersedes_id` points *backwards*
+at the row replaced and `superseded_at` retires it. Two columns rather than one,
+and the direction is load-bearing: a single forward-pointing column makes the
+old row reference a row not yet inserted, and reversing the write order trips
+the one-live-row index instead because both are briefly live. Found by running
+it.
+
+**The default asks no condition checklist.** Regulators have published what
+ministries treat as pre-existing — asthma, diabetes, sleep apnea, autism — and a
+default that ticks those off invites a ministry to adopt someone else's
+exclusions without deciding they are its own. A test enforces it.
+
+**A partly-disclosed household is not disclosed.** Treating "most of them" as
+done is how a need gets declined over a person nobody asked about, discovered at
+the worst possible moment.
 
 **Nothing here declines anybody.** Validation stops an incomplete form; there is
 no path from an answer to a rejection. Same discipline as the eligibility check:
@@ -803,7 +835,7 @@ different audience, in a different table, behind a different cookie.
 |---|---|
 | `workers/api/member-auth.ts` | Login, invite redemption, password, their own claims |
 | `src/app/MemberAuthContext.tsx` | The portal session, separate from staff |
-| `src/app/PortalShell.tsx` | Three destinations, and no more |
+| `src/app/PortalShell.tsx` | Four destinations, and no more |
 | `src/routes/portal/` | Bills, one bill, rights, accept-invite, login |
 | `src/features/members/PortalAccess.tsx` | The staff side: minting an invite |
 
@@ -837,7 +869,7 @@ sharing ministry.
 
 ### What the portal shows
 
-Three destinations: **your bills**, **your rights**, **answers**. "Your
+Four destinations: **your bills**, **your health**, **your rights**, **answers**. "Your
 rights" is top-level rather than a knowledge-base search result, because the
 two facts worth most to a member — that appealing works about half the time and
 almost nobody does it, and that the leverage is against the hospital rather

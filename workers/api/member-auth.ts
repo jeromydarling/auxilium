@@ -4,11 +4,15 @@ import {
   destroyMemberSession, currentMember, requireMember,
   checkLoginRate, recordLoginFailure, clearLoginFailures,
 } from '../lib/auth';
-import { all, first, run } from '../lib/db';
+import { all, first, run, json } from '../lib/db';
 import { param } from '../lib/http';
 import { evaluateSla, buildTracker, type ClaimStage } from '../../src/lib/claims/sla';
 import { nowIso } from '../../src/lib/utils';
 import { audit } from '../lib/audit';
+import {
+  DEFAULT_HEALTH_FORM, validateDisclosure, lookbackLabel, type HealthDisclosureForm,
+} from '../../src/lib/applications/health';
+import { newId } from '../../src/lib/ids';
 
 /**
  * The member portal's front door.
@@ -335,6 +339,170 @@ memberAuth.get('/claims/:id', requireMember, async (c) => {
     }),
   });
 });
+
+// ── Health disclosure ────────────────────────────────────────────────────────
+
+/**
+ * The second stage of joining.
+ *
+ * This is why the public application asks nothing medical. A member reaches
+ * this signed in, against a known account, and every submission is audited.
+ *
+ * Scoped by `member_id` like everything else on this side: a member discloses
+ * for themselves. Household members who cannot sign in are disclosed for by
+ * staff, which is a different route and a different record.
+ */
+
+/** The ministry's questions, and what this member has said so far. */
+memberAuth.get('/health-disclosure', requireMember, async (c) => {
+  const member = (await currentMember(c))!;
+  const form = await loadHealthForm(c.env, member.org_id);
+
+  const existing = await first<{
+    id: string; answers: string; completed_at: string | null; lookback_months: number;
+  }>(
+    c.env.DB,
+    `SELECT id, answers, completed_at, lookback_months
+       FROM member_health_disclosures
+      WHERE member_id = ? AND superseded_at IS NULL`,
+    member.member_id,
+  );
+
+  return c.json({
+    // Rendered here rather than in the browser so the wording a member reads
+    // and the wording a reviewer reads come from one function.
+    form: { ...form, lookbackLabel: lookbackLabel(form.lookback_months) },
+    disclosure: existing
+      ? {
+          answers: json(existing.answers, {}),
+          completed_at: existing.completed_at,
+          // What they were actually asked. A "no" to a 24-month question is not
+          // a "no" to a 36-month one, so the window they answered under travels
+          // with the answers.
+          lookback_months: existing.lookback_months,
+        }
+      : null,
+  });
+});
+
+/**
+ * Save or submit.
+ *
+ * A draft can be edited freely. Submitting closes it: what somebody disclosed
+ * is evidence, and evidence that can be quietly edited afterwards is not
+ * evidence. A member who remembers something later supersedes rather than
+ * overwrites, so the original and the correction both survive — the gap between
+ * them is occasionally the whole question.
+ */
+memberAuth.post('/health-disclosure', requireMember, async (c) => {
+  const member = (await currentMember(c))!;
+  const { answers, submit } = await c.req.json<{
+    answers?: Record<string, { answer: boolean; detail?: string }>;
+    submit?: boolean;
+  }>();
+
+  const form = await loadHealthForm(c.env, member.org_id);
+
+  if (submit) {
+    const issues = validateDisclosure(form, { answers: answers ?? {} });
+    if (issues.length > 0) return c.json({ issues }, 422);
+  }
+
+  const now = nowIso();
+  const existing = await first<{ id: string; completed_at: string | null }>(
+    c.env.DB,
+    'SELECT id, completed_at FROM member_health_disclosures WHERE member_id = ? AND superseded_at IS NULL',
+    member.member_id,
+  );
+
+  if (existing?.completed_at) {
+    // Already submitted. The correction supersedes it; the original stays.
+    //
+    // Order matters and is not interchangeable. The old row is retired first so
+    // the one-live-row index is free, then the new row is inserted pointing
+    // backwards at it — so the foreign key always references a row that exists.
+    // Doing it the other way round fails one constraint or the other.
+    const id = newId('healthDisclosure');
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `UPDATE member_health_disclosures SET superseded_at = ?, updated_at = ? WHERE id = ?`,
+      ).bind(now, now, existing.id),
+      c.env.DB.prepare(
+        `INSERT INTO member_health_disclosures
+           (id, org_id, member_id, answers, form_version, lookback_months,
+            completed_at, supersedes_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        id, member.org_id, member.member_id, JSON.stringify(answers ?? {}),
+        form.version, form.lookback_months, submit ? now : null, existing.id, now, now,
+      ),
+    ]);
+
+    await audit(c.env.DB, {
+      orgId: member.org_id, actorId: member.id, actorKind: 'member',
+      action: 'health_disclosure.corrected', subjectType: 'member', subjectId: member.member_id,
+      meta: { supersedes: existing.id },
+    });
+
+    return c.json({ ok: true, corrected: true });
+  }
+
+  if (existing) {
+    await run(
+      c.env.DB,
+      `UPDATE member_health_disclosures
+          SET answers = ?, form_version = ?, lookback_months = ?, completed_at = ?, updated_at = ?
+        WHERE id = ?`,
+      JSON.stringify(answers ?? {}), form.version, form.lookback_months,
+      submit ? now : null, now, existing.id,
+    );
+  } else {
+    await run(
+      c.env.DB,
+      `INSERT INTO member_health_disclosures
+         (id, org_id, member_id, answers, form_version, lookback_months, completed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      newId('healthDisclosure'), member.org_id, member.member_id,
+      JSON.stringify(answers ?? {}), form.version, form.lookback_months,
+      submit ? now : null, now, now,
+    );
+  }
+
+  if (submit) {
+    await audit(c.env.DB, {
+      orgId: member.org_id, actorId: member.id, actorKind: 'member',
+      action: 'health_disclosure.submitted', subjectType: 'member', subjectId: member.member_id,
+    });
+  }
+
+  return c.json({ ok: true, submitted: Boolean(submit) });
+});
+
+/** The ministry's health form, or the default. */
+async function loadHealthForm(db: AppEnv['Bindings'], orgId: string): Promise<HealthDisclosureForm & { version: number }> {
+  const row = await first<{
+    lookback_months: number; extended: string; intro: string | null;
+    questions: string; version: number;
+  }>(
+    db.DB,
+    'SELECT lookback_months, extended, intro, questions, version FROM health_disclosure_forms WHERE org_id = ?',
+    orgId,
+  );
+
+  if (!row) return { ...DEFAULT_HEALTH_FORM, version: 1 };
+
+  const questions = json(row.questions, []) as HealthDisclosureForm['questions'];
+  return {
+    lookback_months: row.lookback_months,
+    extended: json(row.extended, []) as HealthDisclosureForm['extended'],
+    intro: row.intro ?? undefined,
+    // A stored form with no questions is a ministry mid-edit, not an intent to
+    // ask nothing — and a health disclosure that asks nothing is worse than
+    // none, because it looks answered.
+    questions: questions.length > 0 ? questions : DEFAULT_HEALTH_FORM.questions,
+    version: row.version,
+  };
+}
 
 interface InviteRow {
   id: string;

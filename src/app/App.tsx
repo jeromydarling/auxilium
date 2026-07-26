@@ -7,6 +7,7 @@ import { PortalAcceptPage } from '@/routes/portal/PortalAcceptPage';
 import { PortalClaimsPage } from '@/routes/portal/PortalClaimsPage';
 import { PortalClaimDetailPage } from '@/routes/portal/PortalClaimDetailPage';
 import { PortalRightsPage } from '@/routes/portal/PortalRightsPage';
+import { PortalHealthPage } from '@/routes/portal/PortalHealthPage';
 import { ApplyPage } from '@/routes/ApplyPage';
 import { ApplicationsPage } from '@/routes/ApplicationsPage';
 import { ApplicationDetailPage } from '@/routes/ApplicationDetailPage';
@@ -96,6 +97,7 @@ function PortalRoutes() {
           <Route index element={<PortalClaimsPage />} />
           <Route path="claims/:id" element={<PortalClaimDetailPage />} />
           <Route path="rights" element={<PortalRightsPage />} />
+          <Route path="health" element={<PortalHealthPage />} />
           <Route path="knowledge" element={<KnowledgePage />} />
           {/* Slugs carry a slash, so this captures the rest of the path. */}
           <Route path="knowledge/*" element={<KnowledgeArticlePage />} />
