@@ -8,6 +8,8 @@ import { Select } from '@/components/ui/select';
 import { PageHeader } from '@/app/AppShell';
 import { api, type PrayerListItem } from '@/lib/api';
 import { relativeDays, cn } from '@/lib/utils';
+import { HandHeart } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 
 /**
  * The prayer board.
@@ -57,12 +59,19 @@ export function PrayerBoardPage() {
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading the board…</p>
         ) : (data?.items.length ?? 0) === 0 ? (
-          <div className="rounded-lg border border-dashed p-10 text-center">
-            <p className="font-medium">Nothing on the board.</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              No open requests match that filter.
-            </p>
-          </div>
+          status === 'open' && !category ? (
+            <EmptyState
+              icon={HandHeart}
+              title="Nothing on the prayer board yet"
+              body="A prayer request is a care item with an owner and a follow-up date — the promise that somebody will come back to this family."
+              because="This is the board that catches the follow-up nobody remembers making. Requests with a date that has passed surface on the compass as Cura."
+            />
+          ) : (
+            <EmptyState
+              title="Nothing matches that filter"
+              body="Try a different status or category."
+            />
+          )
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {data?.items.map((request) => (

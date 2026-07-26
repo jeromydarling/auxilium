@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Users, Home, HeartHandshake, HandHeart } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/app/AppShell';
+import { SetupChecklist } from '@/features/onboarding/SetupChecklist';
 import { useNriSummary, useNriTriage } from '@/hooks/nri/useNriSignals';
 import { useNriSessionEngine } from '@/hooks/nri/useNriSessionEngine';
 import { CompassChips } from '@/features/nri/DirectionChip';
@@ -31,6 +32,10 @@ export function DashboardPage() {
       />
 
       <div className="space-y-6 p-6">
+        {/* Above everything. A ministry whose product is misbehaving because
+            setup is incomplete should learn that before it reads the numbers
+            those gaps are distorting. */}
+        <SetupChecklist />
         {nudges.length > 0 && (
           <section>
             <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -102,7 +107,13 @@ export function DashboardPage() {
 
           {triage.length === 0 ? (
             <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Nobody is above the &ldquo;needs attention&rdquo; line. Good day to do the slow work.
+              {/* "Good day to do the slow work" is a reassuring thing to read and
+                  a false one when the board is empty because nobody has been
+                  imported. An empty roster and a calm one look identical here,
+                  and only one of them is good news. */}
+              {(summary?.members ?? 0) === 0
+                ? 'Nothing to rank yet — no members have been imported, so there is nobody to score.'
+                : 'Nobody is above the “needs attention” line. Good day to do the slow work.'}
             </div>
           ) : (
             <div className="divide-y rounded-lg border bg-card">

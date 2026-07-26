@@ -1,0 +1,23 @@
+-- Ministry setup state.
+--
+-- Almost everything about a ministry's setup progress is derived rather than
+-- recorded: "has this ministry published guidelines" is answered by looking for
+-- guidelines. A recorded flag drifts the moment a step is undone, and a
+-- checklist showing a tick next to something that is no longer true is worse
+-- than no checklist.
+--
+-- Only what cannot be observed is stored here, and there are exactly two such
+-- things:
+--
+--   • Whether a default was actively **chosen**. `sla_days` has a value from
+--     the moment the row exists, so its presence proves nothing. A ministry
+--     that deliberately keeps 17 days and one that never looked are
+--     indistinguishable without this, and the second should still be asked.
+--
+--   • Whether the ministry has asked to stop being shown the list. Somebody who
+--     read it and decided is entitled to be left alone.
+--
+-- Stored as JSON rather than as columns because these are timestamps of
+-- one-time acknowledgements, not domain data anything queries or joins on.
+-- Adding the next one should not cost a migration.
+ALTER TABLE organizations ADD COLUMN onboarding_state TEXT NOT NULL DEFAULT '{}';

@@ -6,6 +6,10 @@ import { audit } from '../lib/audit';
 import { storeDocument, readDocument } from '../lib/storage';
 import { newId } from '../../src/lib/ids';
 import { nowIso } from '../../src/lib/utils';
+import { gatherOnboarding, markOnboarding } from '../lib/onboarding-service';
+
+/** The four published rules for which guideline version binds a need. */
+const GOVERNING_RULES = ['member_join', 'date_of_service', 'date_submitted', 'date_received'];
 
 const admin = new Hono<AppEnv>();
 admin.use('*', requireUser);
@@ -113,6 +117,42 @@ admin.patch('/org', requireAdmin, async (c) => {
     sets.push('brand = ?');
     params.push(JSON.stringify(body.brand ?? {}));
   }
+
+  // The ministry's own commitment. Validated rather than trusted, because
+  // these two numbers drive every due date, every escalation, and the
+  // member-facing wording on every claim.
+  for (const field of ['sla_days', 'appeal_sla_days'] as const) {
+    if (field in body) {
+      const days = Number(body[field]);
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        return c.json({ error: 'A turnaround commitment has to be a whole number of days, from 1 to 365.' }, 400);
+      }
+      sets.push(`${field} = ?`);
+      params.push(days);
+    }
+  }
+
+  if ('target_share_ratio_bps' in body) {
+    const bps = Number(body.target_share_ratio_bps);
+    if (!Number.isInteger(bps) || bps < 0 || bps > 10_000) {
+      return c.json({ error: 'A share ratio target is between 0 and 100 percent.' }, 400);
+    }
+    sets.push('target_share_ratio_bps = ?');
+    params.push(bps);
+  }
+
+  if ('governing_version_rule' in body) {
+    const rule = String(body.governing_version_rule);
+    if (!GOVERNING_RULES.includes(rule)) {
+      return c.json(
+        { error: `Which guideline version governs has to be one of: ${GOVERNING_RULES.join(', ')}.` },
+        400,
+      );
+    }
+    sets.push('governing_version_rule = ?');
+    params.push(rule);
+  }
+
   if (sets.length === 0) return c.json({ error: 'Nothing to update.' }, 400);
 
   sets.push('updated_at = ?');
@@ -124,6 +164,39 @@ admin.patch('/org', requireAdmin, async (c) => {
     subjectType: 'org', subjectId: user.org_id, meta: { fields: Object.keys(body) },
   });
 
+  // Choosing these is what the setup checklist cannot otherwise observe: the
+  // columns hold a value from the moment the row exists, so their presence
+  // proves nothing about whether anyone looked.
+  if ('sla_days' in body || 'appeal_sla_days' in body) {
+    await markOnboarding(c.env, user.org_id, 'commitment_set_at');
+  }
+  if ('governing_version_rule' in body) {
+    await markOnboarding(c.env, user.org_id, 'governing_rule_set_at');
+  }
+
+  return c.json({ ok: true });
+});
+
+/**
+ * Ministry setup.
+ *
+ * Readable by any signed-in staff member rather than admins only: the whole
+ * point is that whoever opens the dashboard on day one sees what is missing.
+ * Hiding it from the people most likely to be looking would defeat it.
+ */
+admin.get('/onboarding', async (c) => {
+  const user = (await currentUser(c))!;
+  return c.json(await gatherOnboarding(c.env, user.org_id));
+});
+
+/** Stop showing the checklist. Does not mark anything done — see the summary. */
+admin.post('/onboarding/dismiss', requireAdmin, async (c) => {
+  const user = (await currentUser(c))!;
+  await markOnboarding(c.env, user.org_id, 'dismissed_at');
+  await audit(c.env.DB, {
+    orgId: user.org_id, actorId: user.id, actorKind: 'user',
+    action: 'onboarding.dismissed', subjectType: 'org', subjectId: user.org_id,
+  });
   return c.json({ ok: true });
 });
 

@@ -40,15 +40,39 @@ export function PortalClaimsPage() {
       </div>
 
       {claims.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <p className="text-sm">
-              You have nothing submitted right now. When a bill is submitted for sharing it will
-              appear here with its due date, and you will be able to see every stage it moves
-              through.
-            </p>
-          </CardContent>
-        </Card>
+        // A member with nothing submitted is the one most likely to be here for
+        // the first time, and the least likely to come back before something
+        // goes wrong. So this is the one moment to tell them the two things
+        // worth knowing before they need them.
+        <div className="space-y-3">
+          <Card>
+            <CardContent className="pt-6">
+              <p className="text-sm">
+                You have nothing submitted right now. When a bill is submitted for sharing it will
+                appear here with its due date, and you will be able to see every stage it moves
+                through &mdash; including whether anyone has opened it yet.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              <h2 className="font-semibold">Worth knowing before you need it</h2>
+              <p className="text-sm text-muted-foreground">
+                Two things save members the most money and almost nobody knows them in advance: that
+                appealing a declined need succeeds about half the time and is almost never tried,
+                and that your strongest rights are against the hospital that billed you rather than
+                against the ministry.
+              </p>
+              <Link
+                to="/portal/rights"
+                className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+              >
+                Read your rights <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
       ) : (
         <ul className="space-y-3">
           {claims.map((item) => (

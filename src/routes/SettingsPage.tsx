@@ -13,6 +13,7 @@ import { PageHeader } from '@/app/AppShell';
 import { api } from '@/lib/api';
 import { relativeDays } from '@/lib/utils';
 import { useAuth } from '@/app/AuthContext';
+import { CommitmentSettings } from '@/features/onboarding/CommitmentSettings';
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -77,6 +78,7 @@ function MinistrySettings({ canEdit }: { canEdit: boolean }) {
   };
 
   return (
+    <div className="space-y-6">
     <Card className="max-w-xl">
       <CardHeader>
         <CardTitle>Ministry details</CardTitle>
@@ -114,6 +116,9 @@ function MinistrySettings({ canEdit }: { canEdit: boolean }) {
         )}
       </CardContent>
     </Card>
+
+    <CommitmentSettings canEdit={canEdit} />
+    </div>
   );
 }
 

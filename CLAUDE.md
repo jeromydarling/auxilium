@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 378 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 386 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -236,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-378 tests over the logic that carries the risk: NRI scoring, integrity and
+386 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -643,6 +643,64 @@ lists the ones that matched nothing — each is either an article worth writing 
 a wording members use that the articles do not. "This did not help" is
 volunteered, never inferred: asking again is not evidence the answer was wrong,
 and treating it as such would fill the report with noise.
+
+---
+
+## Onboarding a ministry
+
+A new organization used to land in an empty shell: no guidelines, no roster, a
+turnaround commitment it never chose, and a board with nothing on it. Every one
+of those is a real gap — a ministry recording declines against no published
+guidelines is generating findings against itself on day one.
+
+| | |
+|---|---|
+| `src/lib/onboarding/steps.ts` | The steps and what breaks without each. Pure. |
+| `workers/lib/onboarding-service.ts` | D1 → facts → the checklist |
+| `src/features/onboarding/SetupChecklist.tsx` | On the dashboard, above everything |
+| `src/features/onboarding/CommitmentSettings.tsx` | SLA days, appeal days, governing rule |
+| `src/components/EmptyState.tsx` | What a page says when it has nothing |
+
+**It is a checklist, not a wizard, and it blocks nothing.** A ministry will not
+have its guidelines ready the afternoon it signs up. Software that gates on
+setup gets abandoned at step three; a list that says what is missing and lets
+you work meanwhile gets finished over a fortnight.
+
+**Status is derived, not recorded.** "Has this ministry published guidelines" is
+answered by looking for guidelines. A recorded flag drifts the moment a step is
+undone, and a tick next to something no longer true is worse than no checklist.
+Exactly two things are stored in `organizations.onboarding_state`, because
+neither can be observed: whether a default was actively **chosen** — `sla_days`
+holds a value from the moment the row exists, so its presence proves nothing —
+and whether the list has been dismissed.
+
+**Dismissing is not completing.** The checklist hides, and the gaps are still
+reported to anything that asks.
+
+**Every step names the specific consequence**, and a test enforces that none of
+them says "recommended". "Publish your guidelines — recommended" is ignorable;
+"every decline you record will be flagged as citing no published provision" is a
+reason. A product whose whole argument is that a system nobody can argue with
+does not get trusted cannot ship a checklist that will not explain itself.
+
+### Empty states
+
+Every empty state answers three questions in order: what goes here, why it is
+worth having, and the one thing to do next. Three rather than one, because "No
+members yet" is barely better than blank — an empty table is the most common way
+a new ministry concludes the product is broken, since nothing distinguishes
+"nothing has happened" from "something failed".
+
+They also distinguish **an empty filter from an empty ministry**. "No cases
+match that filter" is a confusing thing to read when the reason is that no case
+has ever been submitted, and only one of those is a setup problem. The dashboard
+does the same: "good day to do the slow work" is false reassurance when the
+board is empty because nobody has been imported.
+
+**There is still no self-serve signup.** `POST /api/auth/bootstrap` creates the
+first ministry and then refuses forever, so a second one cannot be created
+through the product at all. That guard is deliberate for a pre-launch instance,
+but open registration is a product decision nobody has made yet.
 
 ---
 

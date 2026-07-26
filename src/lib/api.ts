@@ -140,6 +140,8 @@ export const api = {
   },
 
   admin: {
+    onboarding: () => get<OnboardingSummary>('/admin/onboarding'),
+    dismissOnboarding: () => post<{ ok: true }>('/admin/onboarding/dismiss'),
     users: () => get<{ items: TeamMember[] }>('/admin/users'),
     createUser: (body: Record<string, unknown>) => post<{ id: string }>('/admin/users', body),
     removeUser: (id: string) => del<{ ok: true }>(`/admin/users/${id}`),
@@ -830,4 +832,27 @@ export interface MemberClaim {
 
 export interface MemberClaimDetail extends MemberClaim {
   steps: { key: string; label: string; state: 'done' | 'current' | 'upcoming' | 'failed'; at: string | null }[];
+}
+
+// ── Ministry setup ───────────────────────────────────────────────────────────
+
+export interface OnboardingStep {
+  key: string;
+  title: string;
+  body: string;
+  /** What actually breaks while this is undone. Never "recommended". */
+  consequence: string;
+  status: 'done' | 'todo';
+  weight: 'blocking' | 'important' | 'optional';
+  route: string;
+  actionLabel: string;
+}
+
+export interface OnboardingSummary {
+  steps: OnboardingStep[];
+  done: number;
+  total: number;
+  blocking: OnboardingStep[];
+  complete: boolean;
+  visible: boolean;
 }

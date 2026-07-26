@@ -9,6 +9,8 @@ import { PageHeader } from '@/app/AppShell';
 import { api } from '@/lib/api';
 import { formatCents } from '@/lib/money';
 import { relativeDays, daysBetween, cn } from '@/lib/utils';
+import { HeartHandshake } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 
 const URGENCY_VARIANT: Record<string, 'destructive' | 'default' | 'secondary' | 'muted'> = {
   critical: 'destructive',
@@ -59,9 +61,23 @@ export function NeedsPage() {
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading cases…</p>
         ) : (data?.items.length ?? 0) === 0 ? (
-          <div className="rounded-lg border border-dashed p-10 text-center">
-            <p className="font-medium">No cases match that filter.</p>
-          </div>
+          // "No cases match that filter" is a confusing thing to read when the
+          // reason is that no case has ever been submitted. The two need
+          // different answers, and only the second one is a setup problem.
+          status === 'open' && !assigned ? (
+            <EmptyState
+              icon={HeartHandshake}
+              title="No sharing needs yet"
+              body="A need is a request for the community to share a medical cost. Every one that arrives gets a due date immediately, and shows here until it is decided."
+              because="Once needs exist, the escalation board watches the ones that stop moving and the integrity report checks that every decline cites a published provision."
+              action={{ label: 'Import your roster first', to: '/imports' }}
+            />
+          ) : (
+            <EmptyState
+              title="No cases match that filter"
+              body="Try a different status, or clear the owner filter."
+            />
+          )
         ) : (
           <div className="rounded-lg border bg-card">
             <Table>
