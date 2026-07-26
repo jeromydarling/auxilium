@@ -837,7 +837,8 @@ export interface MemberIdentity {
 export interface MemberOrg {
   name: string;
   slug: string;
-  brand: string;
+  /** Parsed server-side — the portal styles itself from this on first paint. */
+  brand: Partial<import('./brand/tokens').BrandIntent>;
 }
 
 export interface PortalInvite {
@@ -974,6 +975,7 @@ export interface ApplicationRecord extends ApplicationSummary {
 /** The public form. Fetched without a session, so it carries nothing identifying. */
 export interface PublicApplicationForm {
   org_name: string;
+  brand: Partial<import('./brand/tokens').BrandIntent>;
   version: number;
   intro?: string;
   sections: FormSection[];

@@ -46,9 +46,9 @@ export const publicApplications = new Hono<AppEnv>();
 
 /** The form a ministry publishes, by slug. Nothing here identifies a member. */
 publicApplications.get('/:slug', async (c) => {
-  const org = await first<{ id: string; name: string }>(
+  const org = await first<{ id: string; name: string; brand: string }>(
     c.env.DB,
-    'SELECT id, name FROM organizations WHERE slug = ? AND deleted_at IS NULL',
+    'SELECT id, name, brand FROM organizations WHERE slug = ? AND deleted_at IS NULL',
     param(c, 'slug'),
   );
   // A ministry that has not published and one that does not exist get the same
@@ -60,6 +60,9 @@ publicApplications.get('/:slug', async (c) => {
 
   return c.json({
     org_name: org.name,
+    // For many applicants this page is the first thing they ever see of the
+    // ministry. It should look like the ministry, not like us.
+    brand: json(org.brand, {}),
     version: form.version,
     intro: form.intro,
     sections: form.sections,

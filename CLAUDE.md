@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 425 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 445 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -236,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-425 tests over the logic that carries the risk: NRI scoring, integrity and
+445 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -701,6 +701,63 @@ board is empty because nobody has been imported.
 first ministry and then refuses forever, so a second one cannot be created
 through the product at all. That guard is deliberate for a pre-launch instance,
 but open registration is a product decision nobody has made yet.
+
+---
+
+## The brand system
+
+A ministry picks a colour and a typeface once and every surface follows: the
+staff app, the member portal, the public application form, and — once the site
+builder lands — its own site. One source of truth, because the version where a
+ministry restyles five things separately is the version where four stay wrong.
+
+| | |
+|---|---|
+| `src/lib/brand/tokens.ts` | Colour maths, the derived palette, CSS emission. Pure. |
+| `src/features/brand/BrandStudio.tsx` | The studio, in Settings → Brand |
+| `src/features/brand/BrandProvider.tsx` | `useBrand` — applies a palette to a page |
+
+**The hard part is not storing a hex code.** It is that a ministry can pick a
+colour that makes its own product unreadable, and will — pale yellow, or a
+mid-grey that fails against both white and black. So `resolveBrand` does not
+apply colours; it takes an intent and *derives* a palette that is guaranteed
+legible. Refusing to render unreadable text is not a limitation on somebody's
+brand; it is the difference between a design system and a colour picker.
+
+**Every adjustment is explained, never silent.** A ministry that picks pale
+yellow is told, in plain words, that links use a deeper version and buttons keep
+what they chose, with the exact hex change. Quietly overriding somebody's brand
+feels broken; explaining it feels careful.
+
+**Only the ministry's own choices produce an adjustment.** Our internal
+derivations being clamped — muted text darkened to clear AA — are not reported.
+A list of "changes" full of things nobody asked for is a list nobody reads,
+which buries the one entry that matters.
+
+**Secondary text is held to the same bar as body text.** "Less important" is not
+"optional to read", and this is where accessibility quietly fails in most
+products.
+
+Three things the tests pin, all of which were real bugs first:
+
+- **Contrast is checked on the *rounded* colour.** Checking in float space and
+  rounding afterwards let a value that passed at 3.0001 round down to 2.99 —
+  passing the test and failing the user.
+- **`ensureContrast` returns black or white if the walk exhausts**, rather than
+  the last step short of it. A function that promises legibility must not return
+  "very nearly legible".
+- **The walk is in small steps**, so a bright teal becomes a deeper teal rather
+  than navy. The result is the closest legible version of what they chose.
+
+**The preview is the real thing.** The same `resolveBrand` runs in the studio on
+every keystroke and on the server. A preview computed differently from
+production is a lie that gets discovered by a member. And it previews a member
+surface — a bill, a due date, a button — rather than swatches, because a row of
+colour chips tells a ministry nothing about whether their brand works.
+
+**Still to build:** the CMS site templates and block editing, the public
+ministry site at `/{slug}`, custom domains, and the asset generator. The token
+layer is the foundation all four sit on.
 
 ---
 

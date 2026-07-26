@@ -108,7 +108,13 @@ memberAuth.get('/me', requireMember, async (c) => {
     'SELECT name, slug, brand FROM organizations WHERE id = ?',
     member.org_id,
   );
-  return c.json({ member, org });
+  // Parsed here rather than in the browser. The portal styles itself from this
+  // on first paint, and a client that has to JSON.parse a column first would
+  // flash our colours before the ministry's.
+  return c.json({
+    member,
+    org: org ? { ...org, brand: json(org.brand, {}) } : null,
+  });
 });
 
 /**

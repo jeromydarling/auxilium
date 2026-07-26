@@ -15,6 +15,7 @@ import { relativeDays } from '@/lib/utils';
 import { useAuth } from '@/app/AuthContext';
 import { CommitmentSettings } from '@/features/onboarding/CommitmentSettings';
 import { FormEditor } from '@/features/applications/FormEditor';
+import { BrandStudio } from '@/features/brand/BrandStudio';
 
 export function SettingsPage() {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ export function SettingsPage() {
         <Tabs defaultValue="ministry">
           <TabsList>
             <TabsTrigger value="ministry">Ministry</TabsTrigger>
+            <TabsTrigger value="brand">Brand</TabsTrigger>
             <TabsTrigger value="team">Team</TabsTrigger>
             <TabsTrigger value="application">Application</TabsTrigger>
             <TabsTrigger value="portal">Member portal</TabsTrigger>
@@ -36,6 +38,9 @@ export function SettingsPage() {
 
           <TabsContent value="ministry">
             <MinistrySettings canEdit={canAdminister} />
+          </TabsContent>
+          <TabsContent value="brand">
+            <BrandStudio canEdit={canAdminister} />
           </TabsContent>
           <TabsContent value="team">
             <TeamSettings />

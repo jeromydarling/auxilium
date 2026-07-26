@@ -6,6 +6,7 @@ import { api, type ApplicationIssue, type HouseholdApplicant, type PublicApplica
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { SectionFields } from '@/features/applications/FormFields';
+import { useBrand } from '@/features/brand/BrandProvider';
 
 /**
  * The public application.
@@ -55,6 +56,9 @@ export function ApplyPage() {
 }
 
 function ApplyForm({ form, slug }: { form: PublicApplicationForm; slug: string }) {
+  // For many applicants this page is the first thing they see of the ministry.
+  useBrand(form.brand);
+
   // Captured on mount, not on submit. The gap between the two is the signal.
   const startedAt = useRef(new Date().toISOString());
   const [honeypot, setHoneypot] = useState('');

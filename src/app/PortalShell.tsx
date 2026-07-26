@@ -3,6 +3,7 @@ import { BookOpen, FileText, HeartPulse, LogOut, ShieldQuestion } from 'lucide-r
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useMemberAuth } from './MemberAuthContext';
+import { useBrand } from '@/features/brand/BrandProvider';
 
 /**
  * The member portal shell.
@@ -28,6 +29,10 @@ const NAV = [
 export function PortalShell() {
   const { member, org, signOut } = useMemberAuth();
   const navigate = useNavigate();
+
+  // The ministry's brand, not ours. A member signing in to see a medical bill
+  // should be looking at the organisation they belong to.
+  useBrand(org?.brand);
 
   return (
     <div className="min-h-screen bg-background">
