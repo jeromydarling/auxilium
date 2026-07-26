@@ -13,7 +13,11 @@ import { run } from './db';
 export interface AuditEntry {
   orgId: string;
   actorId: string | null;
-  actorKind: 'user' | 'system' | 'queue' | 'import';
+  // 'member' is distinct from 'user' deliberately. "A member activated their
+  // own account" and "staff activated an account for a member" are different
+  // events, and a reviewer reading this log months later must be able to tell
+  // them apart without inferring it from the action string.
+  actorKind: 'user' | 'member' | 'system' | 'queue' | 'import';
   action: string;
   subjectType?: string | null;
   subjectId?: string | null;

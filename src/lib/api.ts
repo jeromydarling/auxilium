@@ -68,6 +68,9 @@ export const api = {
   },
 
   members: {
+    invitePortal: (id: string, email?: string) =>
+      post<PortalInvite>(`/members/${id}/invite`, email ? { email } : {}),
+    suspendPortal: (id: string) => post<{ ok: true }>(`/members/${id}/suspend-portal`),
     list: (params: { q?: string; status?: string; cursor?: string } = {}) =>
       get<{ items: MemberListItem[]; nextCursor: string | null }>(`/members${query(params)}`),
     get: (id: string) => get<MemberDetail>(`/members/${id}`),
@@ -176,6 +179,21 @@ export const api = {
       post<{ id: string; due_at: string }>(`/claims/${needId}/appeal`, body),
     decideAppeal: (appealId: string, body: { outcome: string; decision_note: string; guideline_ref?: string }) =>
       post<{ ok: true }>(`/claims/appeals/${appealId}/decide`, body),
+  },
+
+  member: {
+    login: (email: string, password: string) =>
+      post<{ member: MemberIdentity }>('/member/login', { email, password }),
+    logout: () => post<{ ok: true }>('/member/logout'),
+    me: () => get<{ member: MemberIdentity; org: MemberOrg }>('/member/me'),
+    invite: (token: string) =>
+      get<{ email: string; name: string; org_name: string }>(`/member/invite/${token}`),
+    acceptInvite: (token: string, password: string) =>
+      post<{ ok: true; email: string }>(`/member/invite/${token}`, { password }),
+    changePassword: (current: string, next: string) =>
+      post<{ ok: true }>('/member/password', { current, next }),
+    claims: () => get<{ claims: MemberClaim[] }>('/member/claims'),
+    claim: (id: string) => get<MemberClaimDetail>(`/member/claims/${id}`),
   },
 
   knowledge: {
@@ -752,4 +770,64 @@ export interface KnowledgeGap {
   question: string;
   asked_count: number;
   last_asked_at: string;
+}
+
+// ── Member portal ────────────────────────────────────────────────────────────
+
+export interface MemberIdentity {
+  id: string;
+  member_id: string;
+  org_id: string;
+  email: string;
+  name: string;
+  role: 'member';
+}
+
+export interface MemberOrg {
+  name: string;
+  slug: string;
+  brand: string;
+}
+
+export interface PortalInvite {
+  invite_url: string;
+  invite_path: string;
+  email: string;
+  expires_at: string;
+  name: string;
+}
+
+export interface MemberClaimRecord {
+  id: string;
+  status: string;
+  title: string;
+  submitted_at: string | null;
+  created_at: string;
+  sla_due_at: string | null;
+  first_response_at: string | null;
+  last_status_change_at: string | null;
+  amount_requested_cents: number;
+  denial_reason_code: string | null;
+  denial_guideline_ref: string | null;
+  denial_note: string | null;
+}
+
+export interface MemberClaimSla {
+  status: 'on_track' | 'due_soon' | 'breached' | 'severely_breached' | 'closed';
+  days_over: number;
+  days_remaining: number;
+  due_at: string | null;
+  acknowledged: boolean;
+  days_unacknowledged: number;
+  member_message: string;
+  needs_escalation: boolean;
+}
+
+export interface MemberClaim {
+  claim: MemberClaimRecord;
+  sla: MemberClaimSla;
+}
+
+export interface MemberClaimDetail extends MemberClaim {
+  steps: { key: string; label: string; state: 'done' | 'current' | 'upcoming' | 'failed'; at: string | null }[];
 }

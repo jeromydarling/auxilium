@@ -215,7 +215,11 @@ export function buildTracker(input: {
 
   const stepState = (index: number): TrackerStep['state'] => {
     if (stage === 'declined' || stage === 'withdrawn') {
-      return index === 0 ? 'done' : index === 1 ? 'failed' : 'upcoming';
+      // Review happened and finished — it did not fail. What failed is the
+      // decision, so that is the step that carries the mark. Getting this
+      // backwards told a declined member that review had broken down and a
+      // decision was still to come.
+      return index <= 1 ? 'done' : 'failed';
     }
     if (stage === 'needs_info') {
       return index === 0 ? 'done' : index === 1 ? 'current' : 'upcoming';
@@ -226,11 +230,19 @@ export function buildTracker(input: {
     return 'upcoming';
   };
 
-  return [
+  const steps: TrackerStep[] = [
     { key: 'submitted', label: 'Received', state: stepState(0), at: input.submitted_at ?? input.created_at },
     { key: 'in_review', label: 'Under review', state: stepState(1), at: input.first_response_at },
     { key: 'approved', label: 'Decision', state: stepState(2), at: input.approved_at ?? null },
     { key: 'sharing', label: 'Being paid', state: stepState(3), at: null },
     { key: 'completed', label: 'Paid', state: stepState(4), at: input.paid_at ?? null },
   ];
+
+  // A declined or withdrawn need is over. Leaving "Being paid" and "Paid" on
+  // the tracker as upcoming steps tells the member money is still on its way,
+  // which is the precise false hope this product exists to prevent. The
+  // sequence stops where it actually stopped.
+  if (stage === 'declined' || stage === 'withdrawn') return steps.slice(0, 3);
+
+  return steps;
 }

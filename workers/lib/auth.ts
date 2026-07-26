@@ -19,6 +19,17 @@ import { first, run } from './db';
  */
 
 const SESSION_COOKIE = 'aux_session';
+/**
+ * Members get their own cookie, and that is the whole isolation mechanism.
+ *
+ * Staff sessions live in `sessions` keyed to `users`; member sessions live in
+ * `member_sessions` keyed to `member_accounts`. Two cookies over two tables
+ * means a member session cannot satisfy `requireUser` and a staff session
+ * cannot satisfy `requireMember` — not because a check remembers to compare a
+ * role, but because the lookup goes somewhere else entirely. A role column is
+ * something a query can forget to filter on. A different table is not.
+ */
+const MEMBER_COOKIE = 'aux_member';
 const SESSION_DAYS = 30;
 const PBKDF2_ITERATIONS = 100_000;
 
@@ -35,7 +46,7 @@ export interface AuthUser {
  * the bindings and the memoized user. Declaring it once removes the casts that
  * would otherwise appear in every single route handler.
  */
-export type AppEnv = { Bindings: Env; Variables: { user: AuthUser } };
+export type AppEnv = { Bindings: Env; Variables: { user: AuthUser; member: AuthMember } };
 export type AppContext = Context<AppEnv>;
 
 // ── Password hashing ─────────────────────────────────────────────────────────
@@ -145,6 +156,127 @@ export async function currentUser(c: AppContext): Promise<AuthUser | null> {
   };
   c.set('user', user);
   return user;
+}
+
+// ── Member sessions ──────────────────────────────────────────────────────────
+
+/**
+ * A signed-in member.
+ *
+ * Shaped like `AuthUser` on purpose, with `role` pinned to 'member', so every
+ * downstream consumer — the knowledge base's audience rule, the audit log —
+ * works unchanged. `id` is the **member account** id rather than the member id,
+ * because that is the identity that signed in; `member_id` carries the person
+ * the account is for.
+ */
+export interface AuthMember extends AuthUser {
+  role: 'member';
+  member_id: string;
+}
+
+export async function createMemberSession(c: AppContext, account: { id: string }): Promise<void> {
+  const token = `${newId('memberSession')}.${crypto.randomUUID()}`;
+  const tokenHash = await sha256(token + signingKey(c.env));
+  const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000).toISOString();
+
+  await run(
+    c.env.DB,
+    `INSERT INTO member_sessions (id, member_account_id, token_hash, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?)`,
+    newId('memberSession'), account.id, tokenHash, expiresAt, nowIso(),
+  );
+
+  setCookie(c, MEMBER_COOKIE, token, {
+    httpOnly: true,
+    secure: c.env.APP_ENV !== 'development',
+    sameSite: 'Lax',
+    path: '/',
+    maxAge: SESSION_DAYS * 86_400,
+  });
+}
+
+export async function destroyMemberSession(c: AppContext): Promise<void> {
+  const token = getCookie(c, MEMBER_COOKIE);
+  if (token) {
+    const tokenHash = await sha256(token + signingKey(c.env));
+    await run(c.env.DB, 'DELETE FROM member_sessions WHERE token_hash = ?', tokenHash);
+  }
+  deleteCookie(c, MEMBER_COOKIE, { path: '/' });
+}
+
+/**
+ * Resolve the current member.
+ *
+ * A suspended account resolves to null rather than to a member with a flag,
+ * because every caller would then have to remember to check the flag and the
+ * one that forgets shows somebody their medical history after their access was
+ * revoked.
+ */
+export async function currentMember(c: AppContext): Promise<AuthMember | null> {
+  const existing = c.get('member');
+  if (existing) return existing;
+
+  const token = getCookie(c, MEMBER_COOKIE);
+  if (!token) return null;
+
+  const tokenHash = await sha256(token + signingKey(c.env));
+  const row = await first<{
+    id: string; org_id: string; email: string; member_id: string;
+    first_name: string; last_name: string; expires_at: string;
+  }>(
+    c.env.DB,
+    `SELECT ma.id, ma.org_id, ma.email, ma.member_id,
+            m.first_name, m.last_name, s.expires_at
+       FROM member_sessions s
+       JOIN member_accounts ma ON ma.id = s.member_account_id
+       JOIN members m ON m.id = ma.member_id
+      WHERE s.token_hash = ?
+        AND ma.deleted_at IS NULL AND ma.status = 'active'
+        AND m.deleted_at IS NULL`,
+    tokenHash,
+  );
+
+  if (!row) return null;
+  if (Date.parse(row.expires_at) < Date.now()) {
+    await run(c.env.DB, 'DELETE FROM member_sessions WHERE token_hash = ?', tokenHash);
+    return null;
+  }
+
+  const member: AuthMember = {
+    id: row.id,
+    org_id: row.org_id,
+    email: row.email,
+    name: `${row.first_name} ${row.last_name}`.trim(),
+    role: 'member',
+    member_id: row.member_id,
+  };
+  c.set('member', member);
+  return member;
+}
+
+/** Middleware: 401 unless a member session resolves. */
+export async function requireMember(c: AppContext, next: Next) {
+  const member = await currentMember(c);
+  if (!member) return c.json({ error: 'Not signed in.' }, 401);
+  return next();
+}
+
+/**
+ * Whoever is signed in — staff or member.
+ *
+ * For the few surfaces both audiences legitimately share, the knowledge base
+ * chief among them. Staff are checked first so a machine holding both cookies
+ * (a staff member testing the portal, which is exactly what will happen) reads
+ * as staff rather than flickering between the two.
+ */
+export async function currentPerson(c: AppContext): Promise<AuthUser | null> {
+  return (await currentUser(c)) ?? (await currentMember(c));
+}
+
+export async function requirePerson(c: AppContext, next: Next) {
+  const person = await currentPerson(c);
+  if (!person) return c.json({ error: 'Not signed in.' }, 401);
+  return next();
 }
 
 /** Middleware: 401 unless a session resolves. */

@@ -36,6 +36,7 @@ const PREFIXES = {
   kbQuestion: 'kbq',
   memberAccount: 'macc',
   memberSession: 'mses',
+  memberInvite: 'minv',
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

@@ -228,12 +228,33 @@ describe('the member-facing tracker', () => {
     expect(steps.map((s) => s.state)).toEqual(['done', 'done', 'current', 'upcoming', 'upcoming']);
   });
 
-  it('shows a decline as a failed decision, not a vanished claim', () => {
+  it('shows a decline as a failed decision, not a failed review', () => {
+    // Review happened and finished. What failed is the decision, and marking
+    // review as the failure told a declined member the process had broken down
+    // and a decision was still coming.
     const steps = buildTracker({
       stage: 'declined', submitted_at: daysAgo(10), created_at: daysAgo(10), first_response_at: daysAgo(8),
     });
-    expect(steps[0].state).toBe('done');
-    expect(steps[1].state).toBe('failed');
+    expect(steps[0].state).toBe('done');   // received
+    expect(steps[1].state).toBe('done');   // reviewed
+    expect(steps[2].state).toBe('failed'); // decided, against them
+  });
+
+  it('does not leave payment steps hanging after a decline', () => {
+    // "Being paid" and "Paid" sitting there as upcoming steps tell somebody
+    // whose need was just refused that money is still on its way. That is the
+    // exact false hope this product exists to prevent, so the tracker stops
+    // where the claim actually stopped.
+    const steps = buildTracker({
+      stage: 'declined', submitted_at: daysAgo(10), created_at: daysAgo(10), first_response_at: daysAgo(8),
+    });
+    expect(steps).toHaveLength(3);
+    expect(steps.map((s) => s.key)).not.toContain('completed');
+
+    // A withdrawn claim is over for a different reason, but just as over.
+    expect(buildTracker({
+      stage: 'withdrawn', submitted_at: daysAgo(10), created_at: daysAgo(10), first_response_at: null,
+    })).toHaveLength(3);
   });
 
   it('parks at review while waiting on information', () => {

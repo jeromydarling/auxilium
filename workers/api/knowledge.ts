@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { requireUser, requireRole, currentUser, type AppEnv } from '../lib/auth';
+import { requirePerson, requireRole, currentPerson, type AppEnv } from '../lib/auth';
 import { param } from '../lib/http';
 import { all, first, run, json } from '../lib/db';
 import { newId } from '../../src/lib/ids';
@@ -25,7 +25,11 @@ import { gatherAccountFacts, memberIdForUser } from '../lib/knowledge-service';
  * works with no key and no network.
  */
 const knowledge = new Hono<AppEnv>();
-knowledge.use('*', requireUser);
+// Staff or member — this is the one surface both audiences share, and the
+// `audience` field decides what each of them actually sees. Admin-only routes
+// below still use requireRole, which resolves a staff session only, so a member
+// cannot reach ministry article editing or the gap report.
+knowledge.use('*', requirePerson);
 
 /**
  * Ministry-authored articles, layered over the platform library.
@@ -73,7 +77,7 @@ function audienceFor(role: string): 'staff' | 'member' {
 
 /** Browse: everything, grouped, for the audience asking. */
 knowledge.get('/', async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
   const audience = audienceFor(user.role);
   const library = await libraryFor(c.env, user.org_id);
 
@@ -95,7 +99,7 @@ knowledge.get('/', async (c) => {
 
 /** One article. */
 knowledge.get('/article/*', async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
   const slug = c.req.path.replace(/^\/api\/knowledge\/article\//, '');
   const library = await libraryFor(c.env, user.org_id);
   const article = articleBySlug(library, slug);
@@ -120,7 +124,7 @@ knowledge.get('/article/*', async (c) => {
 
 /** Plain search, for someone who would rather browse than ask. */
 knowledge.get('/search', async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
   const query = c.req.query('q') ?? '';
   if (!query.trim()) return c.json({ results: [] });
 
@@ -151,7 +155,7 @@ knowledge.get('/search', async (c) => {
  * unanswered ones are the single best signal of what is missing.
  */
 knowledge.post('/ask', async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
   const body = await c.req.json<{ question: string; member_id?: string }>();
   const question = (body.question ?? '').trim();
 
@@ -204,7 +208,7 @@ knowledge.post('/ask', async (c) => {
  * was wrong, and treating it as such would fill the gap report with noise.
  */
 knowledge.post('/unhelpful', async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
   const body = await c.req.json<{ question: string }>();
 
   await run(
@@ -230,7 +234,7 @@ knowledge.post('/unhelpful', async (c) => {
  * void.
  */
 knowledge.get('/gaps', requireRole('owner', 'admin'), async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
 
   const rows = await all<{ question: string; role: string; n: number; last_asked: string }>(
     c.env.DB,
@@ -256,7 +260,7 @@ knowledge.get('/gaps', requireRole('owner', 'admin'), async (c) => {
 const requireEditor = requireRole('owner', 'admin');
 
 knowledge.get('/manage', requireEditor, async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
   const rows = await all(
     c.env.DB,
     `SELECT id, slug, title, audience, category, status, updated_at
@@ -267,7 +271,7 @@ knowledge.get('/manage', requireEditor, async (c) => {
 });
 
 knowledge.post('/manage', requireEditor, async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
   const b = await c.req.json<Record<string, unknown>>();
 
   const slug = String(b.slug ?? '').trim();
@@ -333,7 +337,7 @@ knowledge.post('/manage', requireEditor, async (c) => {
 });
 
 knowledge.delete('/manage/*', requireEditor, async (c) => {
-  const user = (await currentUser(c))!;
+  const user = (await currentPerson(c))!;
   const slug = c.req.path.replace(/^\/api\/knowledge\/manage\//, '');
   await run(
     c.env.DB,

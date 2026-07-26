@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, ExternalLink } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { useKnowledgeBasePath } from '@/hooks/useKnowledgeBase';
 
 /**
  * One article.
@@ -14,6 +15,7 @@ import { Separator } from '@/components/ui/separator';
  * decoration.
  */
 export function KnowledgeArticlePage() {
+  const base = useKnowledgeBasePath();
   const params = useParams();
   // Slugs contain a slash — "member/your-rights" — so the route captures the
   // rest of the path rather than a single segment.
@@ -32,7 +34,7 @@ export function KnowledgeArticlePage() {
     return (
       <div className="space-y-4">
         <p className="text-sm">That article does not exist, or is not one you can see.</p>
-        <Link to="/knowledge" className="text-sm text-primary hover:underline">
+        <Link to={base} className="text-sm text-primary hover:underline">
           Back to the knowledge base
         </Link>
       </div>
@@ -44,7 +46,7 @@ export function KnowledgeArticlePage() {
   return (
     <article className="mx-auto max-w-3xl space-y-6">
       <Link
-        to="/knowledge"
+        to={base}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" /> Knowledge
@@ -136,7 +138,7 @@ export function KnowledgeArticlePage() {
             <ul className="mt-2 space-y-1">
               {a.related.map((slugRef) => (
                 <li key={slugRef}>
-                  <Link to={`/knowledge/${slugRef}`} className="text-sm text-primary hover:underline">
+                  <Link to={`${base}/${slugRef}`} className="text-sm text-primary hover:underline">
                     {slugRef.split('/').slice(1).join('/').replace(/-/g, ' ')}
                   </Link>
                 </li>

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { requireUser, requireWriteAccess, currentUser, type AppContext, type AppEnv } from '../lib/auth';
+import { requireUser, requireWriteAccess, currentUser, sha256, type AppContext, type AppEnv } from '../lib/auth';
 import { all, first, run, encodeCursor, decodeCursor, toBool, toInt } from '../lib/db';
 import { param } from '../lib/http';
 import { audit } from '../lib/audit';
@@ -13,6 +13,9 @@ const members = new Hono<AppEnv>();
 members.use('*', requireUser);
 
 const PAGE_SIZE = 50;
+
+/** How long a portal invite stays live. Long enough to survive a holiday. */
+const INVITE_DAYS = 14;
 
 /**
  * List members, keyset-paginated on (last_name, id).
@@ -297,5 +300,145 @@ interface MemberListRow {
   phone: string | null; status: string; member_number: string | null;
   household_id: string | null; last_contact_at: string | null; onboarding_complete: number;
 }
+
+/**
+ * Invite a member to the portal.
+ *
+ * Creates the account if it does not exist, mints a single-use link, and
+ * returns it. Auxilium does not send the email — the ministry does, from its
+ * own address, because a household that has never heard of us is far more
+ * likely to open a message from the ministry it belongs to than one from a
+ * vendor it has not heard of. That is also why the link is returned in the
+ * response rather than only mailed: staff need to be able to read it out over
+ * the phone to somebody who cannot find the email.
+ *
+ * Re-inviting is allowed and expected — people lose links. Every earlier
+ * outstanding invite for that account is voided first, so exactly one link is
+ * ever live and a screenshot of an old one is worth nothing.
+ */
+members.post('/:id/invite', requireWriteAccess, async (c) => {
+  const user = (await currentUser(c))!;
+  const memberId = param(c, 'id');
+  const body = await c.req.json<{ email?: string }>().catch(() => ({ email: undefined }));
+
+  const member = await first<{ id: string; email: string | null; first_name: string; last_name: string }>(
+    c.env.DB,
+    `SELECT id, email, first_name, last_name FROM members
+      WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
+    memberId, user.org_id,
+  );
+  if (!member) return c.json({ error: 'No such member.' }, 404);
+
+  const email = (body.email ?? member.email ?? '').trim();
+  if (!email) {
+    return c.json(
+      { error: 'This member has no email address. Add one, or pass an address to invite them at.' },
+      400,
+    );
+  }
+
+  const now = nowIso();
+  let account = await first<{ id: string; status: string }>(
+    c.env.DB,
+    'SELECT id, status FROM member_accounts WHERE member_id = ? AND deleted_at IS NULL',
+    member.id,
+  );
+
+  if (!account) {
+    const accountId = newId('memberAccount');
+    await run(
+      c.env.DB,
+      `INSERT INTO member_accounts (id, org_id, member_id, email, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'invited', ?, ?)`,
+      accountId, user.org_id, member.id, email, now, now,
+    );
+    account = { id: accountId, status: 'invited' };
+  } else if (account.status === 'suspended') {
+    // Re-inviting a suspended account would quietly restore access that
+    // somebody deliberately revoked. Lifting a suspension is its own decision.
+    return c.json({ error: 'This account is suspended. Restore it before inviting again.' }, 409);
+  } else {
+    await run(
+      c.env.DB,
+      'UPDATE member_accounts SET email = ?, updated_at = ? WHERE id = ?',
+      email, now, account.id,
+    );
+  }
+
+  // Exactly one live link per account.
+  await run(
+    c.env.DB,
+    'UPDATE member_invites SET used_at = ? WHERE member_account_id = ? AND used_at IS NULL',
+    now, account.id,
+  );
+
+  const token = `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, '');
+  const expiresAt = new Date(Date.now() + INVITE_DAYS * 86_400_000).toISOString();
+
+  await run(
+    c.env.DB,
+    `INSERT INTO member_invites (id, org_id, member_account_id, token_hash, expires_at, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    newId('memberInvite'), user.org_id, account.id, await sha256(token), expiresAt, user.id, now,
+  );
+
+  await audit(c.env.DB, {
+    orgId: user.org_id,
+    actorId: user.id,
+    actorKind: 'user',
+    action: 'member_account.invited',
+    subjectType: 'member',
+    subjectId: member.id,
+    meta: { email },
+  });
+
+  const origin = new URL(c.req.url).origin;
+
+  return c.json({
+    // Relative too, because a ministry on a custom domain should paste its own
+    // hostname into the email rather than whatever this Worker answers on.
+    invite_url: `${origin}/app/portal/accept/${token}`,
+    invite_path: `/app/portal/accept/${token}`,
+    email,
+    expires_at: expiresAt,
+    name: `${member.first_name} ${member.last_name}`.trim(),
+  });
+});
+
+/** Revoke portal access without deleting the account or its history. */
+members.post('/:id/suspend-portal', requireWriteAccess, async (c) => {
+  const user = (await currentUser(c))!;
+  const memberId = param(c, 'id');
+  const now = nowIso();
+
+  const account = await first<{ id: string }>(
+    c.env.DB,
+    `SELECT ma.id FROM member_accounts ma
+       JOIN members m ON m.id = ma.member_id
+      WHERE ma.member_id = ? AND m.org_id = ? AND ma.deleted_at IS NULL`,
+    memberId, user.org_id,
+  );
+  if (!account) return c.json({ error: 'This member has no portal account.' }, 404);
+
+  await run(
+    c.env.DB,
+    "UPDATE member_accounts SET status = 'suspended', updated_at = ? WHERE id = ?",
+    now, account.id,
+  );
+  // Suspending while a session is live would be theatre.
+  await run(c.env.DB, 'DELETE FROM member_sessions WHERE member_account_id = ?', account.id);
+  await run(
+    c.env.DB,
+    'UPDATE member_invites SET used_at = ? WHERE member_account_id = ? AND used_at IS NULL',
+    now, account.id,
+  );
+
+  await audit(c.env.DB, {
+    orgId: user.org_id, actorId: user.id, actorKind: 'user',
+    action: 'member_account.suspended', subjectType: 'member', subjectId: memberId,
+  });
+
+  return c.json({ ok: true });
+});
 
 export default members;

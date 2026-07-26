@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PageHeader } from '@/app/AppShell';
 import { SignalExplanation } from '@/features/nri/SignalExplanation';
 import { BandBadge } from '@/features/nri/DirectionChip';
+import { PortalAccess } from '@/features/members/PortalAccess';
 import { useNriSignals } from '@/hooks/nri/useNriSignals';
 import { api } from '@/lib/api';
 import { formatCents } from '@/lib/money';
@@ -200,6 +201,11 @@ export function MemberDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <PortalAccess
+            memberId={member.id as string}
+            email={(member.email as string | null) ?? null}
+          />
 
           <Card>
             <CardHeader className="pb-2">

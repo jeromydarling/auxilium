@@ -3,6 +3,7 @@ import { BookOpen } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useNriKnowledgeIndex } from '@/hooks/nri/useNriAsk';
 import { AskPanel } from '@/features/nri/AskPanel';
+import { useKnowledgeBasePath } from '@/hooks/useKnowledgeBase';
 
 /**
  * The knowledge base, browsable.
@@ -18,6 +19,7 @@ import { AskPanel } from '@/features/nri/AskPanel';
  */
 export function KnowledgePage() {
   const { categories, isLoading, audience } = useNriKnowledgeIndex();
+  const base = useKnowledgeBasePath();
 
   return (
     <div className="space-y-6">
@@ -52,7 +54,7 @@ export function KnowledgePage() {
                   {group.articles.map((a) => (
                     <li key={a.slug}>
                       <Link
-                        to={`/knowledge/${a.slug}`}
+                        to={`${base}/${a.slug}`}
                         className="font-medium text-primary hover:underline"
                       >
                         {a.title}

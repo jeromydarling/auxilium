@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 372 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 378 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -236,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-372 tests over the logic that carries the risk: NRI scoring, integrity and
+378 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -643,6 +643,81 @@ lists the ones that matched nothing — each is either an article worth writing 
 a wording members use that the articles do not. "This did not help" is
 volunteered, never inferred: asking again is not evidence the answer was wrong,
 and treating it as such would fill the report with noise.
+
+---
+
+## The member portal
+
+`/app/portal`. A member is not staff with fewer permissions — they are a
+different audience, in a different table, behind a different cookie.
+
+| | |
+|---|---|
+| `workers/api/member-auth.ts` | Login, invite redemption, password, their own claims |
+| `src/app/MemberAuthContext.tsx` | The portal session, separate from staff |
+| `src/app/PortalShell.tsx` | Three destinations, and no more |
+| `src/routes/portal/` | Bills, one bill, rights, accept-invite, login |
+| `src/features/members/PortalAccess.tsx` | The staff side: minting an invite |
+
+**Isolation is structural, not a role check.** Staff sessions live in
+`sessions` keyed to `users`; member sessions live in `member_sessions` keyed to
+`member_accounts`, under a different cookie. A member session cannot satisfy
+`requireUser` because the lookup goes to a different table entirely — not
+because a query remembered to compare a role. A role column is something a
+query can forget to filter on; a different table is not. The same split is
+mirrored in the router: `/portal/*` never mounts the staff `AuthProvider`, and
+the staff tree never mounts `MemberAuthProvider`.
+
+**Every member query scopes by `member_id`, never `org_id`.** Staff scope by
+org because a staff member may legitimately see anyone in their ministry. A
+member may see exactly one person's medical circumstances. An org-scoped query
+on the member side would hand every member the whole roster's claims and would
+look completely normal in review.
+
+**Members set their own password.** Staff mint a single-use invite; Auxilium
+does not send it. The ministry emails it from its own address, because a
+household that has never heard of us will open a message from the ministry it
+belongs to and treat one from an unknown vendor about their medical bills as
+phishing — which is the correct instinct. The link is shown on screen so staff
+can read it to someone on the phone. Re-inviting voids the previous link, and
+suspending drops every live session rather than only blocking the next login.
+
+**Every sign-in failure returns the same sentence.** Wrong password, unknown
+email, suspended, invited-but-never-activated. Distinguishing them would turn
+the login form into a way to ask whether a given person belongs to a health
+sharing ministry.
+
+### What the portal shows
+
+Three destinations: **your bills**, **your rights**, **answers**. "Your
+rights" is top-level rather than a knowledge-base search result, because the
+two facts worth most to a member — that appealing works about half the time and
+almost nobody does it, and that the leverage is against the hospital rather
+than the ministry — are worthless if you have to know what to type to find them.
+
+A declined need shows the reason, the guideline provision cited, and **the
+absence of one just as plainly**. Hiding "no provision was recorded" from the
+member would be indefensible in a product that scores the ministry on exactly
+that fact.
+
+`member_message` on every claim comes straight from the SLA engine, so the
+wording a member reads derives from the same computation the staff escalation
+board runs on. There is no separate member-facing story that can drift from the
+operational one.
+
+**A declined tracker stops at the decision.** It used to mark *review* as
+failed and leave "Being paid" and "Paid" sitting below as upcoming steps —
+telling somebody whose need had just been refused that money was still on its
+way. That is the precise false hope this product exists to prevent. Found by
+opening the page, not by reading the code.
+
+### The demo
+
+`schema/seed-portal.sql`, run by `db:seed:local` / `db:seed:remote`. Password
+`auxilium-member-2026`, and the accounts are picked for the situations they are
+in: an ordinary active mix, a large claim in review, two declines (one
+pre-existing, one fixable documentation), a need being paid, and one member
+invited but never activated so the acceptance flow has something to redeem.
 
 ---
 

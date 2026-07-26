@@ -4,6 +4,7 @@ import { ArrowRight, ExternalLink, MessageCircleQuestion, Search } from 'lucide-
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useNriAsk, useNriKnowledgeIndex } from '@/hooks/nri/useNriAsk';
+import { useKnowledgeBasePath } from '@/hooks/useKnowledgeBase';
 
 /**
  * Ask NRI.
@@ -31,6 +32,7 @@ export function AskPanel({ memberId, onNavigate }: { memberId?: string; onNaviga
   const [draft, setDraft] = useState('');
   const { answer, error, isAsking, ask, clear, markUnhelpful, unhelpfulRecorded } = useNriAsk(memberId);
   const { suggested } = useNriKnowledgeIndex();
+  const base = useKnowledgeBasePath();
 
   function submit(question: string) {
     const q = question.trim();
@@ -153,7 +155,7 @@ export function AskPanel({ memberId, onNavigate }: { memberId?: string; onNaviga
                 {answer.articles.slice(0, 3).map((a) => (
                   <li key={a.slug}>
                     <Link
-                      to={`/knowledge/${a.slug}`}
+                      to={`${base}/${a.slug}`}
                       onClick={onNavigate}
                       className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                     >

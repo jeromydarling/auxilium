@@ -16,6 +16,7 @@ import claimsRoutes from './api/claims';
 import billingRoutes from './api/billing';
 import migrationRoutes from './api/migration';
 import knowledgeRoutes from './api/knowledge';
+import memberAuthRoutes from './api/member-auth';
 import stripeWebhookRoutes from './api/stripe-webhook';
 import marketingRoutes from './marketing';
 import { renderNotFound } from './marketing/render';
@@ -117,6 +118,7 @@ app.route('/api/claims', claimsRoutes);
 app.route('/api/billing', billingRoutes);
 app.route('/api/migration', migrationRoutes);
 app.route('/api/knowledge', knowledgeRoutes);
+app.route('/api/member', memberAuthRoutes);
 
 /**
  * The Stripe webhook, mounted outside the authenticated routes on purpose.
