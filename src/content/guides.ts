@@ -507,7 +507,158 @@ const claimsThatStall: MarketingPage = {
   related: ['claims-integrity', 'narrative-relational-intelligence'],
 };
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Moving members to a new processor
+// ─────────────────────────────────────────────────────────────────────────────
+
+const movingProcessors: MarketingPage = {
+  slug: 'guides/moving-members-to-a-new-processor',
+  kind: 'guide',
+  category: 'Operations',
+  title: 'Moving members to a new payment processor — Auxilium',
+  h1: 'How to move 5,000 members to a new processor without asking any of them to re-enroll',
+  description:
+    'Stored cards and verified bank mandates transfer between processors directly, with no member ' +
+    'action and no billing gap. What the process actually involves, what it costs in time, and ' +
+    'which members genuinely do have to act.',
+  priority: 0.7,
+  updated: '2026-07-26',
+  blocks: [
+    {
+      type: 'prose',
+      paragraphs: [
+        'Most ministries stay on a payment platform they have outgrown for one reason, and it is ' +
+        'not the software. It is the belief that leaving means emailing every household a new ' +
+        'payment link and hoping most of them follow through. That belief is reasonable, widely ' +
+        'held, and wrong.',
+
+        'Stored payment credentials are portable. A PCI-compliant processor can transfer the cards ' +
+        'it holds on file — and, separately, verified bank authorizations — to another ' +
+        'PCI-compliant processor, without the cardholder being involved and without a gap in ' +
+        'billing. The receiving processor recreates each customer and payment method on its own ' +
+        'side. From a member’s perspective nothing happens at all: the same amount leaves the same ' +
+        'account on the same day of the month.',
+
+        'This is not an obscure favour. It is a documented, standard process, because regulators ' +
+        'and the card networks both take the view that a merchant should not be locked into a ' +
+        'processor by the practical impossibility of leaving. What follows is what it actually ' +
+        'involves.',
+      ],
+    },
+    {
+      type: 'prose',
+      heading: 'What actually moves, and what does not',
+      paragraphs: [
+        'Cards on file move, including the expiry date and which one is the default. Where the old ' +
+        'processor will also release the original network transaction identifier for each card, ' +
+        'that moves too — and it matters more than it sounds, because it is what lets the new ' +
+        'processor tell the card network "this is an existing arrangement, not a new one". Without ' +
+        'it, some members get an authentication prompt from their bank on the first charge. Not a ' +
+        'failure, but a surprise, and surprises generate phone calls.',
+
+        'Verified bank mandates move as well, and are usually the easier half. An account that has ' +
+        'already been verified elsewhere does not need to be verified again, so nobody is asked to ' +
+        'confirm microdeposits a second time. For a ministry that collects most of its sharing ' +
+        'amounts by bank draft, this is the bulk of the roster crossing with no member contact at ' +
+        'all.',
+
+        'Two things genuinely do not move. Google Pay credentials cannot be transferred between ' +
+        'processors by anyone, under any circumstances — those members will have to add a payment ' +
+        'method again. Apple Pay requires a separate device-token request and is not covered by ' +
+        'the standard card transfer. Together these are usually a small minority of a ministry ' +
+        'roster, but they are a real minority, and the only sensible thing to do is identify them ' +
+        'at the start and contact them directly rather than discovering them when a charge fails.',
+
+        'If a ministry has been running payments in-house — spreadsheets, paper authorizations, a ' +
+        'bookkeeper keying in amounts — then there is no vault to move and every paying member ' +
+        'does have to provide details once. That is worth being straightforward about rather than ' +
+        'discovering three weeks in.',
+      ],
+    },
+    {
+      type: 'prose',
+      heading: 'The sequence, and roughly how long it takes',
+      paragraphs: [
+        'First, ask the current processor for a PCI-compliant transfer to the new one. The wording ' +
+        'matters: this is a data-portability request for a processor-to-processor transfer, not a ' +
+        'report and not an export sent to the ministry. Most support desks understand it ' +
+        'immediately when it is phrased that way and are confused by almost any other phrasing. ' +
+        'Expect one to two weeks for them to produce the file, longer with some.',
+
+        'Second, the receiving processor imports it. Typically around ten business days from ' +
+        'receiving a correctly formatted file — which is why validating the file up front is worth ' +
+        'the effort. A malformed export costs the whole round trip to discover.',
+
+        'Third, recreate the recurring schedules. Payment methods and billing schedules are ' +
+        'separate things: the transfer moves the former, and the subscriptions are rebuilt ' +
+        'afterwards against each member’s existing amount and billing day.',
+
+        'Fourth, and the step most often skipped, run both platforms at once. Keep billing through ' +
+        'the old processor until every member shows a successful charge on the new one. The ' +
+        'temptation is to cut over on a date; the correct trigger is a number reaching zero.',
+      ],
+    },
+    {
+      type: 'callout',
+      tone: 'caution',
+      heading: 'Nobody should be sending card numbers by email',
+      body:
+        'The transfer goes from your old processor to your new one over an encrypted channel they ' +
+        'establish between themselves. If any vendor in this process — including a software ' +
+        'platform offering to help — asks to receive the card data themselves, that is the moment ' +
+        'to stop. It is unnecessary, and it puts primary account numbers in a system that is ' +
+        'almost certainly not scoped to hold them.',
+    },
+    {
+      type: 'prose',
+      heading: 'What to tell members',
+      paragraphs: [
+        'For the large majority: nothing needs saying, because nothing is happening to them. Some ' +
+        'ministries send a short note anyway, on the reasonable grounds that a member who spots an ' +
+        'unfamiliar name on a bank statement should have been told in advance. That is a good ' +
+        'instinct, and the note should be one paragraph, not a call to action.',
+
+        'For the small group who do have to act — wallet users, and anyone whose old processor ' +
+        'could not release their details — the message should be individual and should explain ' +
+        'why they specifically are being asked when others are not. A blanket "everyone please ' +
+        're-enter your payment information" email to the whole roster is the single most expensive ' +
+        'mistake available here. It converts a quiet technical migration into a mass re-enrollment ' +
+        'event, and a predictable fraction of a roster simply does not come back.',
+
+        'This is worth stating plainly because it is the failure mode that actually happens. The ' +
+        'churn ministries fear when they contemplate switching is almost entirely self-inflicted, ' +
+        'and it comes from over-communicating a change that did not require member involvement.',
+      ],
+    },
+    {
+      type: 'prose',
+      heading: 'What Auxilium does with all this',
+      paragraphs: [
+        'Auxilium is the coordination layer, not the courier. It generates the request in the ' +
+        'wording your specific processor responds to, validates the metadata manifest before ' +
+        'anyone spends a ten-day round trip on a malformed file, matches the returned records to ' +
+        'your roster on your own member numbers, rebuilds the schedules on each member’s existing ' +
+        'billing day, and shows a per-member board through the dual-run window so the decision to ' +
+        'retire the old processor is made against evidence.',
+
+        'It does not handle payment data, and it will refuse a file that contains any. The last ' +
+        'four digits are all it needs to reconcile, and all it should ever have.',
+      ],
+    },
+    {
+      type: 'cta',
+      heading: 'See what the migration board looks like',
+      body: 'The demo ministry includes a worked migration with the awkward cases left in.',
+      cta: { label: 'Open the demo', href: '/app/login' },
+      secondaryCta: { label: 'See every feature', href: '/features' },
+    },
+  ],
+  related: ['features', 'pricing', 'how-it-works'],
+};
+
 export const GUIDES: MarketingPage[] = [
+  movingProcessors,
   shareRatioExplained,
   howIntegrityScoringWorks,
   explainableScoring,

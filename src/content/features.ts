@@ -24,6 +24,7 @@ export type FeatureCategory =
   | 'Claims'
   | 'Financial integrity'
   | 'Care & prayer'
+  | 'Switching processors'
   | 'Platform';
 
 export interface FeatureEntry {
@@ -41,6 +42,7 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
   'Claims',
   'Roster import',
   'Members & households',
+  'Switching processors',
   'Care & prayer',
   'Platform',
 ];
@@ -490,6 +492,100 @@ export const FEATURES: FeatureEntry[] = [
       'nobody opened the dashboard, which makes delivery the highest-value thing not yet built.',
     category: 'Care & prayer',
     tags: ['notifications', 'roadmap'],
+    status: 'planned',
+  },
+
+
+  // ── Switching processors ──────────────────────────────────────────────────
+  {
+    title: 'Members do not re-enter their payment details',
+    body:
+      'The reason ministries stay on a platform they have outgrown is that switching appears to ' +
+      'mean asking every household to set up payment again. It does not. Stored cards and ' +
+      'verified bank mandates transfer from your current processor to Stripe directly, with no ' +
+      'action from members and no gap in billing.',
+    category: 'Switching processors',
+    tags: ['migration', 'onboarding', 'core'],
+    status: 'shipped',
+  },
+  {
+    title: 'The letter that gets the export released',
+    body:
+      'Auxilium writes the data-portability request for your specific processor, in the language ' +
+      'that gets it understood rather than bounced. Ministry staff should not have to learn the ' +
+      'phrase "PAN export" to leave a vendor.',
+    category: 'Switching processors',
+    tags: ['migration', 'onboarding'],
+    status: 'shipped',
+  },
+  {
+    title: 'Auxilium never holds a card number',
+    body:
+      'Payment data moves from your old processor to Stripe directly and never passes through ' +
+      'Auxilium. The manifest uploaded here carries the last four digits and nothing more, and ' +
+      'any file containing a full card number is refused before it is stored.',
+    category: 'Switching processors',
+    tags: ['migration', 'security', 'core'],
+    status: 'shipped',
+  },
+  {
+    title: 'The manifest is checked before the ten-day wait',
+    body:
+      'A malformed export costs a full round trip to discover. Validation runs up front and names ' +
+      'the specific rows that will not migrate, so the problems are fixed before anyone is ' +
+      'waiting on them.',
+    category: 'Switching processors',
+    tags: ['migration', 'validation'],
+    status: 'shipped',
+  },
+  {
+    title: 'Members are matched, never guessed at',
+    body:
+      'Returned records match to your roster on your own member number first, then email. There ' +
+      'is no fuzzy matching, because an unmatched row is a short list for staff to work through ' +
+      'while a wrongly matched one debits a family that never agreed to it.',
+    category: 'Switching processors',
+    tags: ['migration', 'dedupe', 'core'],
+    status: 'shipped',
+  },
+  {
+    title: 'Everyone keeps their existing billing date',
+    body:
+      'Rebuilt subscriptions are anchored to the day each member is already billed on, so nobody ' +
+      'is charged twice in the changeover month or skipped entirely. A member billed on the 31st ' +
+      'is still billed in February.',
+    category: 'Switching processors',
+    tags: ['migration', 'billing'],
+    status: 'shipped',
+  },
+  {
+    title: 'Run both platforms until every member is safely across',
+    body:
+      'A per-member board shows who has been imported, matched, subscribed, and — the only one ' +
+      'that counts — actually charged successfully here. Nobody has to guess when it is safe to ' +
+      'switch the old processor off.',
+    category: 'Switching processors',
+    tags: ['migration', 'workflow', 'core'],
+    status: 'shipped',
+  },
+  {
+    title: 'Digital wallets are flagged, not glossed over',
+    body:
+      'Google Pay tokens cannot be moved between processors by anyone, and Apple Pay needs a ' +
+      'separate request. Those members are named up front as the ones who will need to act, ' +
+      'instead of being discovered when a charge fails.',
+    category: 'Switching processors',
+    tags: ['migration', 'wallets'],
+    status: 'shipped',
+  },
+  {
+    title: 'Failed migrations become a care signal, not a mass email',
+    body:
+      'When a migrated payment method declines, that member surfaces on the Fides direction as ' +
+      'someone to contact — a targeted conversation rather than a blanket "everyone please ' +
+      're-enter your card" message to the whole roster.',
+    category: 'Switching processors',
+    tags: ['migration', 'scoring'],
     status: 'planned',
   },
 

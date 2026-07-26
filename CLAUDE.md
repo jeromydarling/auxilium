@@ -463,6 +463,52 @@ that has not ended and is idempotent at two levels — a period past `open` is
 returned untouched, and Stripe's idempotency keys are derived from org and
 period — so a double-fired cron cannot double-bill.
 
+### Processor migration
+
+The thing that actually blocks a ministry from switching is not features. It is
+believing that leaving means asking five thousand households to re-enroll. That
+belief is wrong — stored cards and verified bank mandates transfer
+processor-to-processor with no member action — and disproving it is worth more
+than most features.
+
+| | |
+|---|---|
+| `src/lib/migration/processors.ts` | Who releases what, and the request letter |
+| `src/lib/migration/manifest.ts` | The card-data guard, validation, reconciliation |
+| `workers/api/migration.ts` | The wizard endpoints |
+| `schema/migrations/0004_processor_migration.sql` | Migration + per-member rows |
+
+**Auxilium is the coordination layer, not the courier.** Payment data goes from
+the losing processor to Stripe directly. Routing it through here would put
+primary account numbers in this system and drag it into full PCI DSS scope —
+which is what fails the security review of the large, risk-averse ministry this
+feature exists to win. Every user-facing benefit survives without it.
+
+`containsCardData` is the enforcement, and it is the most important function in
+the module. Any run of 13–19 digits that passes a **Luhn check** fails the
+upload before a byte is stored. Luhn matters: without it every long member ID
+and phone number trips the alarm, the alarm gets ignored, and it stops
+protecting anything. A refused upload is written to the audit log — somebody
+nearly sent us card numbers, and that is worth a record precisely *because* we
+refused it.
+
+Three other decisions worth keeping:
+
+- **Matching is member number, then email, then it stops.** No fuzzy matching,
+  same as the roster importer and for a worse reason: a wrong match here does
+  not create a duplicate somebody notices later, it debits a family that never
+  agreed to it. An unmatched row is a short list for staff.
+- **Billing anchors are preserved, and day 31 clamps rather than rolls.** A
+  member billed on the 31st is billed on the 28th in February, not skipped.
+- **The dual-run board counts successful charges, not imports.** The trigger for
+  retiring the old processor is a number reaching zero, not a date in a plan.
+
+The guide at `/guides/moving-members-to-a-new-processor` names the failure mode
+that actually costs ministries members: a blanket "everyone please re-enter your
+payment information" email. The churn ministries fear when switching is almost
+entirely self-inflicted, and it comes from over-communicating a change that did
+not require member involvement.
+
 **`formatRate` rounds in basis-point space** before formatting. Two decimals of
 a percentage *is* one basis point, and `(82.5/100).toFixed(2)` renders "0.82"
 rather than "0.83" because 0.825 has no exact binary representation. Each of
