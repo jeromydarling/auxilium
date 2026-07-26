@@ -17,6 +17,7 @@ import billingRoutes from './api/billing';
 import migrationRoutes from './api/migration';
 import knowledgeRoutes from './api/knowledge';
 import memberAuthRoutes from './api/member-auth';
+import applicationRoutes, { publicApplications } from './api/applications';
 import stripeWebhookRoutes from './api/stripe-webhook';
 import marketingRoutes from './marketing';
 import { renderNotFound } from './marketing/render';
@@ -119,6 +120,11 @@ app.route('/api/billing', billingRoutes);
 app.route('/api/migration', migrationRoutes);
 app.route('/api/knowledge', knowledgeRoutes);
 app.route('/api/member', memberAuthRoutes);
+app.route('/api/applications', applicationRoutes);
+// Mounted separately from the staff routes above so that no auth middleware can
+// be applied to the wrong half by accident. This is the only public write path
+// in the product besides the Stripe webhook.
+app.route('/api/apply', publicApplications);
 
 /**
  * The Stripe webhook, mounted outside the authenticated routes on purpose.

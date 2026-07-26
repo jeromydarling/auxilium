@@ -7,6 +7,9 @@ import { PortalAcceptPage } from '@/routes/portal/PortalAcceptPage';
 import { PortalClaimsPage } from '@/routes/portal/PortalClaimsPage';
 import { PortalClaimDetailPage } from '@/routes/portal/PortalClaimDetailPage';
 import { PortalRightsPage } from '@/routes/portal/PortalRightsPage';
+import { ApplyPage } from '@/routes/ApplyPage';
+import { ApplicationsPage } from '@/routes/ApplicationsPage';
+import { ApplicationDetailPage } from '@/routes/ApplicationDetailPage';
 import { AppShell } from './AppShell';
 import { LoginPage } from '@/routes/LoginPage';
 import { DashboardPage } from '@/routes/DashboardPage';
@@ -32,6 +35,9 @@ export function App() {
   // staff session never has member auth in scope.
   return (
     <Routes>
+      {/* Public: no session, no auth provider. Somebody applying to a ministry
+          does not have an account yet, which is the whole point. */}
+      <Route path="/apply/:slug" element={<ApplyPage />} />
       <Route
         path="/portal/*"
         element={
@@ -138,6 +144,8 @@ function AppRoutes() {
         <Route path="/nri" element={<CommandCenterPage />} />
         <Route path="/integrity" element={<IntegrityPage />} />
         <Route path="/escalations" element={<EscalationsPage />} />
+        <Route path="/applications" element={<ApplicationsPage />} />
+        <Route path="/applications/:id" element={<ApplicationDetailPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />
         {/* Slugs carry a slash — "member/your-rights" — so this captures the
             rest of the path rather than a single segment. */}

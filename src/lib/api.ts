@@ -11,6 +11,15 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public requestId?: string | null,
+    /**
+     * The whole error payload.
+     *
+     * Some endpoints answer with structure rather than a sentence — the
+     * application form returns per-field validation issues, and collapsing
+     * those into "Request failed (422)" would leave an applicant staring at a
+     * form with no idea which field is wrong.
+     */
+    public payload?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -30,7 +39,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   // The error shape is the only part of a response this function reads, so it
   // is the only part worth typing here; the success payload is the caller's `T`.
-  type ErrorPayload = { error?: string; request_id?: string | null };
+  type ErrorPayload = { error?: string; request_id?: string | null; issues?: unknown[] };
 
   const isJson = response.headers.get('content-type')?.includes('application/json');
   const payload = isJson
@@ -39,9 +48,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     throw new ApiError(
-      payload?.error ?? `Request failed (${response.status}).`,
+      payload?.error ??
+        (payload?.issues?.length
+          ? 'Some answers need another look.'
+          : `Request failed (${response.status}).`),
       response.status,
       payload?.request_id,
+      payload,
     );
   }
 
@@ -53,6 +66,8 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
+const put = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 
 export const api = {
@@ -196,6 +211,35 @@ export const api = {
       post<{ ok: true }>('/member/password', { current, next }),
     claims: () => get<{ claims: MemberClaim[] }>('/member/claims'),
     claim: (id: string) => get<MemberClaimDetail>(`/member/claims/${id}`),
+  },
+
+  /**
+   * Unauthenticated. Reachable with no session at all, which is the point —
+   * somebody applying to a ministry does not have an account yet.
+   */
+  public: {
+    applicationForm: (slug: string) => get<PublicApplicationForm>(`/apply/${slug}`),
+    apply: (slug: string, body: Record<string, unknown>) =>
+      post<{ ok: true; reference: string }>(`/apply/${slug}`, body),
+  },
+
+  applications: {
+    list: (params: { status?: string; suspicious?: boolean } = {}) =>
+      get<{ items: ApplicationSummary[] }>(`/applications${query(params)}`),
+    get: (id: string) =>
+      get<{ application: ApplicationRecord; form: { version: number; sections: FormSection[] }; stale_form: boolean }>(
+        `/applications/${id}`,
+      ),
+    setStatus: (id: string, body: { status: string; note?: string }) =>
+      post<{ ok: true }>(`/applications/${id}/status`, body),
+    accept: (id: string, note?: string) =>
+      post<{ household_id: string; member_ids: string[] }>(`/applications/${id}/accept`, { note }),
+    form: () =>
+      get<{ form: PublishedForm; public_path: string; default_sections: FormSection[] }>(
+        '/applications/form/current',
+      ),
+    saveForm: (body: { intro?: string; sections: FormSection[]; publish?: boolean }) =>
+      put<{ ok: true; version: number; published: boolean }>('/applications/form/current', body),
   },
 
   knowledge: {
@@ -855,4 +899,83 @@ export interface OnboardingSummary {
   blocking: OnboardingStep[];
   complete: boolean;
   visible: boolean;
+}
+
+// ── Applications ─────────────────────────────────────────────────────────────
+
+export interface FormField {
+  key: string;
+  label: string;
+  type: 'text' | 'textarea' | 'email' | 'phone' | 'date' | 'number' | 'select' | 'checkbox' | 'attestation';
+  help?: string;
+  required?: boolean;
+  options?: { value: string; label: string }[];
+  statement?: string;
+  maxLength?: number;
+}
+
+export interface FormSection {
+  key: string;
+  title: string;
+  description?: string;
+  fields: FormField[];
+}
+
+export interface PublishedForm {
+  version: number;
+  intro?: string;
+  sections: FormSection[];
+  published: boolean;
+}
+
+export interface HouseholdApplicant {
+  first_name: string;
+  last_name: string;
+  date_of_birth?: string;
+  relationship?: string;
+}
+
+export interface ApplicationSummary {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  status: string;
+  submitted_at: string;
+  first_opened_at: string | null;
+  requested_start_date: string | null;
+  household: HouseholdApplicant[];
+  spam_score: number;
+  decided_at: string | null;
+}
+
+export interface ApplicationRecord extends ApplicationSummary {
+  date_of_birth: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  answers: Record<string, Record<string, string | boolean>>;
+  form_version: number;
+  guideline_version_id: string | null;
+  decision_note: string | null;
+  spam_reasons: string[];
+  created_household_id: string | null;
+  created_member_id: string | null;
+}
+
+/** The public form. Fetched without a session, so it carries nothing identifying. */
+export interface PublicApplicationForm {
+  org_name: string;
+  version: number;
+  intro?: string;
+  sections: FormSection[];
+  health_note: string;
+}
+
+export interface ApplicationIssue {
+  path: string;
+  message: string;
 }

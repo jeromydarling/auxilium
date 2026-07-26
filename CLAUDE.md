@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 386 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 415 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -236,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-386 tests over the logic that carries the risk: NRI scoring, integrity and
+415 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -701,6 +701,96 @@ board is empty because nobody has been imported.
 first ministry and then refuses forever, so a second one cannot be created
 through the product at all. That guard is deliberate for a pre-launch instance,
 but open registration is a product decision nobody has made yet.
+
+---
+
+## Membership applications
+
+A ministry's front door. Before this, people arrived only by import or by being
+typed in — so every ministry ran a form somewhere else and retyped the results.
+
+| | |
+|---|---|
+| `src/lib/applications/schema.ts` | The spine, the field types, the default form |
+| `src/lib/applications/validate.ts` | Per-field validation and answer pruning |
+| `src/lib/applications/spam.ts` | Scoring. Never rejection. |
+| `workers/api/applications.ts` | The public endpoint and the staff routes |
+| `workers/lib/application-service.ts` | Accepting: form → household → members |
+| `src/routes/ApplyPage.tsx` | The public form, no session required |
+| `src/features/applications/FormEditor.tsx` | The configurable half, in Settings |
+
+**A fixed spine plus configurable sections.** The spine is whatever creating a
+household requires — names, contact, who else is joining, requested start date
+— and it is not editable, because approval writes it to real records and a form
+that might not collect a surname cannot create a member. The sections are
+everything ministries genuinely differ on, and they differ enormously: faith-
+gated ministries want a statement of faith and church attendance, one wants a
+pastor's signature; others explicitly welcome all faiths and ask only ethical
+attestations. Tobacco is disqualifying at three large ministries and a monthly
+surcharge at four others. A single fixed form cannot serve both ends of that,
+and a builder with no spine cannot create a household.
+
+**The default form deliberately has no statement of faith**, and a test enforces
+it. Roughly half the category does not gate on one; a default that assumes
+otherwise ships every non-faith-gated ministry a form misrepresenting them until
+somebody notices. Adding a section is a change; removing a wrong one is an
+apology.
+
+**A submitted application is immutable.** What somebody disclosed at application
+is the exact evidence a decline three years later gets argued against.
+Corrections supersede via `supersedes_id`; the original is kept.
+
+**It records the guideline version in force at submission.** Under the enrolment
+rule that is the document binding the member, and without the anchor a decline
+years later cannot say which one they actually agreed to.
+
+**Accepting creates the household and everyone on it**, in one batch. The
+applicant becomes the primary contact — household complexity scores on the
+primary only, and a household with nobody marked puts a family of eight on the
+board as eight rows. `classifyRelationship` maps what people type ("my boy",
+"step-daughter") onto the enum the schema stores, and **age overrides wording**,
+because `is_dependent` feeds Familia and a typo should not hide a child.
+`joined_at` honours the requested start date, since that decides which guideline
+version binds them.
+
+### The second unauthenticated write path
+
+The first is the Stripe webhook, defended by a signature. There is no equivalent
+here — the point is that a stranger who found the ministry can apply. Instead:
+
+- Nothing is reachable until a ministry **publishes**. An unpublished form and a
+  nonexistent ministry return the same 404, so the endpoint cannot be used to
+  enumerate which ministries use Auxilium.
+- Answers are **pruned to what the form asked**. Otherwise anyone could write
+  arbitrary keys into a ministry's records through a field never rendered, and a
+  reviewer would have no idea it was there.
+- The source address is stored **hashed** — enough to count, not enough to keep
+  an address against a medical-adjacent record.
+- **Spam is scored, never enforced.** A high score sorts an application into a
+  low-confidence tab a human still reads. Nothing is ever dropped: a silent drop
+  tells an applicant their form was sent when it does not exist, and the cost of
+  a false positive is a family's membership. No CAPTCHA — it taxes every
+  legitimate applicant, fails hardest for people on poor connections and screen
+  readers, and is defeated cheaply.
+
+**Health disclosure is not on the public form.** Pre-existing questions are the
+most sensitive thing a ministry collects and the exact material a decline gets
+argued over — collecting them from an anonymous stranger over an
+unauthenticated POST is the hardest thing here to defend, and it is avoidable.
+Once accepted, the household has portal credentials and discloses signed in,
+against a known account, with an audit trail. The cost is two steps. **The
+second-stage disclosure UI is not built yet** — the boundary is enforced (the
+default form is tested to contain nothing medical) but the follow-up form is
+outstanding.
+
+**Nothing here declines anybody.** Validation stops an incomplete form; there is
+no path from an answer to a rejection. Same discipline as the eligibility check:
+a person refused by a form has been refused by something that cannot be argued
+with.
+
+The board sorts **oldest first**, and flags an application nobody has opened —
+the same reason claims do. An applicant cannot tell "being considered" from
+"lost", and assumes the first until it is too late to assume anything.
 
 ---
 
