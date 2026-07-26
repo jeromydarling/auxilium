@@ -232,8 +232,19 @@ jobs:
             echo "execution without them (see the degradation table in CLAUDE.md)."
           fi
 
+      # Capture the URL wrangler prints so the verification below checks the
+      # thing that was actually just deployed, rather than reconstructing a
+      # hostname and hoping it matches.
       - name: Deploy
-        run: bunx wrangler deploy --env "$TARGET_ENV"
+        run: |
+          set -o pipefail
+          bunx wrangler deploy --env "$TARGET_ENV" 2>&1 | tee /tmp/deploy.log
+
+          DEPLOYED_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/deploy.log | head -1)
+          if [ -n "$DEPLOYED_URL" ]; then
+            echo "DEPLOYED_URL=$DEPLOYED_URL" >> "$GITHUB_ENV"
+            echo "Deployed to $DEPLOYED_URL"
+          fi
 
       # Preview only, and guarded twice — the seed script itself targets the
       # dev database, and this step refuses to run outside preview regardless.
@@ -247,24 +258,25 @@ jobs:
           bunx wrangler d1 execute auxilium-db-dev --remote --file=./schema/seed.sql
 
       # Local green is not shipped. Fetch the real thing and confirm it answers.
+      #
+      # This step used to derive the hostname from `wrangler subdomain get`, and
+      # exit 0 with a warning when that came back empty — which it always did,
+      # so the check never ran while the job still reported success and the
+      # summary below claimed the health endpoint had been verified. A
+      # verification that passes without verifying is worse than no
+      # verification: it is a green tick asserting something nobody checked.
+      #
+      # The URL now comes from the deploy step's own output, and its absence is
+      # a failure rather than a shrug.
       - name: Verify the deploy is live
         run: |
-          if [ "$TARGET_ENV" = "production" ]; then
-            WORKER="auxilium-app"
-          else
-            WORKER="auxilium-app-preview"
+          if [ -z "$DEPLOYED_URL" ]; then
+            echo "::error::The deploy step printed no workers.dev URL, so the live check cannot run."
+            echo "Refusing to report success for a deploy that was never verified."
+            exit 1
           fi
 
-          SUBDOMAIN=$(bunx wrangler subdomain get 2>/dev/null \
-            | grep -oE '[a-z0-9-]+\.workers\.dev' | head -1 | cut -d. -f1)
-
-          if [ -z "$SUBDOMAIN" ]; then
-            echo "::warning::Could not determine the workers.dev subdomain; skipping the live check."
-            echo "The deploy itself succeeded — verify by hand at the URL wrangler printed above."
-            exit 0
-          fi
-
-          URL="https://$WORKER.$SUBDOMAIN.workers.dev/api/health"
+          URL="$DEPLOYED_URL/api/health"
           echo "Checking $URL"
 
           # A fresh deploy can take a few seconds to propagate.
@@ -286,10 +298,17 @@ jobs:
       - name: Summary
         if: always()
         run: |
+          # Report what happened, not what was supposed to happen. This ran with
+          # `if: always()` while stating flatly that migrations had been applied
+          # and the health endpoint verified — including on runs where the job
+          # failed before either step.
           {
             echo "### Auxilium deploy — \`$TARGET_ENV\`"
             echo ""
             echo "- Commit: \`${GITHUB_SHA:0:7}\`"
-            echo "- Migrations applied before deploy"
-            echo "- Health endpoint verified live"
+            if [ -n "$DEPLOYED_URL" ]; then
+              echo "- Deployed to $DEPLOYED_URL"
+            else
+              echo "- **Not deployed** — the run did not reach a successful deploy"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
