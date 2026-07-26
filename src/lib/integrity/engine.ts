@@ -1,6 +1,6 @@
 import type { ReasonCode } from '../nri/types';
 import type {
-  IntegrityFacts, IntegrityReport, IntegrityBand, DenialFinding, GuidelineVersion,
+  IntegrityFacts, IntegrityReport, IntegrityBand, DenialFinding, GuidelineVersion, DenialFacts,
 } from './types';
 import { ACA_MLR_INDIVIDUAL_BPS, ACA_MLR_LARGE_GROUP_BPS } from './types';
 import { evaluateIntegrityRules, INTEGRITY_RULES_VERSION } from './rules';
@@ -148,8 +148,8 @@ function recommendedActions(reasons: ReasonCode[]): string[] {
   }
   if (codes.has('integrity.retroactive_guideline')) {
     actions.push(
-      'Reverse any denial applying a guideline that post-dates the member joining, and honor the ' +
-      'version in force when they joined.',
+      'Reverse any denial applying a guideline that post-dates the date your own published policy ' +
+      'makes controlling, and honor the version that policy points at.',
     );
   }
   if (codes.has('integrity.denial_reason_unsupported')) {
@@ -195,6 +195,24 @@ export function auditDenials(
 
   const findings: DenialFinding[] = [];
 
+  // Which date the ministry's own published policy makes controlling. Four are
+  // in force across the category, so assuming enrolment universally would flag
+  // a time-of-service ministry every time it followed its own rules. Undeclared
+  // falls back to enrolment, the reading most protective of the member.
+  const policy = facts.governing_version_rule ?? 'member_join';
+  const governingDate = (d: DenialFacts): { date: string; label: string } | null => {
+    switch (policy) {
+      case 'date_of_service':
+        return d.service_date ? { date: d.service_date, label: 'the care was delivered' } : null;
+      case 'date_submitted':
+        return d.submitted_at ? { date: d.submitted_at, label: 'the request was submitted' } : null;
+      case 'date_received':
+        return d.received_at ? { date: d.received_at, label: 'the bills were received' } : null;
+      default:
+        return d.member_joined_at ? { date: d.member_joined_at, label: 'the member joined' } : null;
+    }
+  };
+
   for (const denial of facts.denials) {
     const base = {
       need_id: denial.need_id,
@@ -228,14 +246,16 @@ export function auditDenials(
 
     const { provision, version } = entry;
 
-    if (denial.member_joined_at && version.effective_from > denial.member_joined_at.slice(0, 10)) {
+    const governing = governingDate(denial);
+    if (governing && version.effective_from > governing.date.slice(0, 10)) {
       findings.push({
         ...base,
         severity: 'serious',
         code: 'denial.retroactive',
         message:
-          `Applies guideline ${version.version}, effective ${version.effective_from}, to a member ` +
-          `who joined ${denial.member_joined_at.slice(0, 10)}. They never agreed to this rule.`,
+          `Applies guideline ${version.version}, effective ${version.effective_from}, to a need ` +
+          `where ${governing.label} on ${governing.date.slice(0, 10)} — the date this ministry's ` +
+          'own published policy makes controlling. The member never agreed to this rule.',
       });
       continue;
     }

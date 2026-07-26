@@ -172,8 +172,8 @@ export function integrityCard(): string {
           <i class="ratio-fill" style="--w:89%"></i>
           <i class="ratio-mark" style="--at:80%"><span>ACA floor 80.0%</span></i>
         </div>
-        <p class="ratio-note">Health care sharing ministries are statutorily exempt from this
-        floor. Clearing a bar you are not held to is the point.</p>
+        <p class="ratio-note">Health care sharing ministries are not held to this floor.
+        Clearing a bar you are not held to is the point.</p>
       </div>
       <div class="mk-rows">
         <div class="mk-row"><span>Contributions received</span><b>$4,182,900</b></div>

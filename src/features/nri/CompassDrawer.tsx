@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useNriSessionEngine } from '@/hooks/nri/useNriSessionEngine';
 import { useNriCompass } from '@/hooks/nri/useNriCompass';
 import { useNriAutoOpen, useNriGlow } from '@/hooks/nri/useNriAutoOpen';
+import { AskPanel } from './AskPanel';
 import { useNriGuide } from '@/hooks/nri/useNriGuide';
 import { DIRECTION_META, NRI_DIRECTIONS } from '@/lib/nri/directions';
 import type { Direction } from '@/lib/api';
@@ -88,6 +89,13 @@ function CompassPanel({ onClose }: { onClose: () => void }) {
 
         <div className="flex-1 overflow-y-auto p-4">
           <CompassRose weights={posture.weights} />
+
+          <Separator className="my-4" />
+
+          {/* Ask sits above Today deliberately. Today is what the software
+              noticed; Ask is what the person walked in with, and the person's
+              own question outranks ours. */}
+          <AskPanel onNavigate={onClose} />
 
           <Separator className="my-4" />
 

@@ -1,7 +1,12 @@
 import { computeIntegrity, auditDenials, guidelineInForce } from '../../src/lib/integrity/engine';
 import type {
   IntegrityFacts, PeriodLedger, GuidelineVersion, DenialFacts, IntegrityReport,
+  GoverningVersionRule,
 } from '../../src/lib/integrity/types';
+
+/** The four published rules, for validating whatever is in the column. */
+const GOVERNING_RULES: GoverningVersionRule[] =
+  ['member_join', 'date_of_service', 'date_submitted', 'date_received'];
 import { newId } from '../../src/lib/ids';
 import { nowIso } from '../../src/lib/utils';
 import type { Env } from './env';
@@ -26,9 +31,10 @@ export async function gatherIntegrityFacts(
   now: string = nowIso(),
 ): Promise<IntegrityFacts> {
   const [org, ledger, guidelines, denials, breaches, appeals, openClaims] = await Promise.all([
-    first<{ target_share_ratio_bps: number; sla_days: number }>(
+    first<{ target_share_ratio_bps: number; sla_days: number; governing_version_rule: string }>(
       env.DB,
-      'SELECT target_share_ratio_bps, sla_days FROM organizations WHERE id = ?',
+      `SELECT target_share_ratio_bps, sla_days, governing_version_rule
+         FROM organizations WHERE id = ?`,
       orgId,
     ),
     loadLedger(env, orgId),
@@ -65,6 +71,13 @@ export async function gatherIntegrityFacts(
     org_id: orgId,
     ledger,
     target_share_ratio_bps: org?.target_share_ratio_bps ?? 8_000,
+    // Unrecognised or unset falls back to enrolment — the strictest of the four
+    // published rules, and the right default for a ministry that has not said.
+    governing_version_rule: GOVERNING_RULES.includes(
+      org?.governing_version_rule as GoverningVersionRule,
+    )
+      ? (org!.governing_version_rule as GoverningVersionRule)
+      : 'member_join',
     denials,
     guidelines,
     sla_breaches: breaches.map((b) => ({ need_id: b.need_id, days_over: b.days_over })),
@@ -186,6 +199,7 @@ async function loadDenials(env: Env, orgId: string): Promise<DenialFacts[]> {
   return all<DenialFacts>(
     env.DB,
     `SELECT n.id AS need_id, n.member_id, m.joined_at AS member_joined_at,
+            n.service_date, n.submitted_at, n.bills_received_at AS received_at,
             COALESCE(n.last_status_change_at, n.updated_at) AS denied_at,
             n.denial_reason_code, n.denial_guideline_ref,
             n.amount_requested_cents, n.category

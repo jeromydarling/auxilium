@@ -32,6 +32,10 @@ const PREFIXES = {
   billingEvent: 'bevt',
   procMigration: 'pmig',
   procMigrationRow: 'pmrw',
+  kbArticle: 'kba',
+  kbQuestion: 'kbq',
+  memberAccount: 'macc',
+  memberSession: 'mses',
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;

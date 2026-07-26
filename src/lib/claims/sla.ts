@@ -3,14 +3,23 @@ import { daysBetween } from '../utils';
 /**
  * The claims SLA clock.
  *
- * Share Healthcare's own stated turnaround was 17 days; a Raleigh family's
- * newborn's bills went months past it because a vendor was lost and nothing
- * escalated on its own. That is the whole failure mode: the commitment existed
- * on a website and nowhere in the software.
+ * The asymmetry this exists to correct is documented and one-sided: ministries
+ * publish hard deadlines *members* must meet — six months from date of service
+ * to submit a bill at Sedera, Zion, Knew Health and CHM, 120 days at Solidarity
+ * — and publish no enforceable deadline of their own. Where a turnaround is
+ * stated at all it is stated as a range, in months, in marketing copy, and
+ * nothing computes against it.
  *
- * This module makes the commitment a computed, visible state on every claim,
- * so a breach is something the system announces rather than something a member
- * discovers.
+ * When that gap has actually been closed, it has been closed by a regulator
+ * after the fact: New York's DFS consent order with Jericho Share imposed fixed
+ * payment deadlines as a *remedy*. The argument for this module is that the
+ * remedy is cheap to install beforehand and expensive to be handed.
+ *
+ * So `sla_days` is not a claim about the industry and is not a number we
+ * inherited from anyone. It is the ministry's own commitment, set per
+ * organization, defaulted deliberately tighter than any published turnaround
+ * we found, and made a computed, visible state on every claim — so a breach is
+ * something the system announces rather than something a member discovers.
  */
 
 export type SlaStatus = 'on_track' | 'due_soon' | 'breached' | 'severely_breached' | 'closed';

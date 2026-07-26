@@ -21,10 +21,19 @@ export type IntegrityBand = 'healthy' | 'watch' | 'concern' | 'critical';
 export const BPS = 10_000;
 
 /**
- * The ACA medical-loss-ratio floors. HCSMs are statutorily exempt from these —
- * which is the entire point of measuring against them anyway. A ministry that
- * can show it clears the bar it is not held to has said something no
- * competitor's marketing can.
+ * The ACA medical-loss-ratio floors (45 CFR § 158.210).
+ *
+ * Health care sharing ministries are not held to these — which is the entire
+ * point of measuring against them anyway. A ministry that can show it clears
+ * the bar it is not held to has said something no competitor's marketing can.
+ *
+ * Worth stating precisely, because the loose version is wrong: there is no
+ * provision anywhere that exempts HCSMs from Part 158 by name. Part 158 binds
+ * *health insurance issuers* (§ 158.101), and an HCSM is not an issuer — NAIC
+ * says so directly, and every state that has legislated on it says so too. So
+ * "not subject to" is accurate and "statutorily exempt" is not. The one thing
+ * HCSMs *are* explicitly exempted from by statute is the individual mandate,
+ * 26 U.S.C. § 5000A(d)(2)(B), which is a different provision entirely.
  */
 export const ACA_MLR_INDIVIDUAL_BPS = 8_000;  // 80%
 export const ACA_MLR_LARGE_GROUP_BPS = 8_500; // 85%
@@ -59,6 +68,14 @@ export interface IntegrityFacts {
   denials: DenialFacts[];
   /** Guideline versions in force across the window. */
   guidelines: GuidelineVersion[];
+  /**
+   * Which version the ministry's own published policy makes governing.
+   *
+   * Undeclared falls back to `member_join`, the strictest of the four. That is
+   * the right default: a ministry that has not said which version binds gets
+   * measured against the one most protective of the member.
+   */
+  governing_version_rule?: GoverningVersionRule;
   /** Open claims past their SLA, and by how far. */
   sla_breaches: { need_id: string; days_over: number }[];
   /** Appeals past their own due date. */
@@ -67,11 +84,44 @@ export interface IntegrityFacts {
   open_claim_count: number;
 }
 
+/**
+ * Which published rule decides the guideline version that binds a need.
+ *
+ * There is no category standard, and the difference is legally material. All
+ * four of these are in force at real ministries today, stated in their own
+ * guidelines:
+ *
+ *   • `member_join`      — the version in force when the member enrolled.
+ *   • `date_of_service`  — the version in force when the care happened. Some
+ *                          ministries add a grandfathering ratchet on top of
+ *                          it, some explicitly apply amendments to open needs.
+ *   • `date_submitted`   — the version in force when the request was filed.
+ *   • `date_received`    — the version in force when the ministry logged the
+ *                          bills.
+ *
+ * This field exists because the integrity rule below used to assume
+ * `member_join` universally, which would have raised a finding every time a
+ * time-of-service ministry followed its own published policy correctly. A rule
+ * that fires on correct behaviour is worse than no rule: it trains staff to
+ * dismiss the whole report.
+ */
+export type GoverningVersionRule =
+  | 'member_join'
+  | 'date_of_service'
+  | 'date_submitted'
+  | 'date_received';
+
 export interface DenialFacts {
   need_id: string;
   member_id: string;
-  /** When the member joined — decides which guideline version binds them. */
+  /** When the member joined. Governs under `member_join`. */
   member_joined_at: string | null;
+  /** When care was delivered. Governs under `date_of_service`. */
+  service_date?: string | null;
+  /** When the member filed the request. Governs under `date_submitted`. */
+  submitted_at?: string | null;
+  /** When the ministry logged the bills. Governs under `date_received`. */
+  received_at?: string | null;
   denied_at: string;
   denial_reason_code: string | null;
   denial_guideline_ref: string | null;

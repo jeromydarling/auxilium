@@ -12,6 +12,8 @@ import { ImportDetailPage } from '@/routes/ImportDetailPage';
 import { NeedsPage } from '@/routes/NeedsPage';
 import { PrayerBoardPage } from '@/routes/PrayerBoardPage';
 import { CommandCenterPage } from '@/routes/CommandCenterPage';
+import { KnowledgePage } from '@/routes/KnowledgePage';
+import { KnowledgeArticlePage } from '@/routes/KnowledgeArticlePage';
 import { SettingsPage } from '@/routes/SettingsPage';
 import { RulesPage } from '@/routes/RulesPage';
 import { IntegrityPage } from '@/routes/IntegrityPage';
@@ -61,6 +63,10 @@ function AppRoutes() {
         <Route path="/nri" element={<CommandCenterPage />} />
         <Route path="/integrity" element={<IntegrityPage />} />
         <Route path="/escalations" element={<EscalationsPage />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
+        {/* Slugs carry a slash — "member/your-rights" — so this captures the
+            rest of the path rather than a single segment. */}
+        <Route path="/knowledge/*" element={<KnowledgeArticlePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/rules" element={<RulesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

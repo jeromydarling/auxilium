@@ -229,26 +229,55 @@ export const INTEGRITY_RULES: IntegrityRule[] = [
   },
   {
     code: 'integrity.retroactive_guideline',
-    label: 'Denials under guidelines published after the member joined',
+    label: 'Denials under a guideline version the ministry’s own policy does not make governing',
     weight: 45,
     provenance:
       'The signature pattern of this category: market coverage "from day one", then deny on ' +
-      'exactly that basis under rules the member never agreed to. A woman billed $125,000 after ' +
-      'a stroke was told she had lied about a pre-existing condition; a man was denied $67,000 ' +
-      'over a kidney stone from twelve years earlier.',
+      'exactly that basis under rules the member never agreed to. What makes it checkable is ' +
+      'that ministries publish which version governs — and they do not agree. Four rules are in ' +
+      'force across the category: the version at enrolment, at date of service, at submission, ' +
+      'and at the date bills were received. So this does not score "a newer guideline was ' +
+      'applied", which would fire on a time-of-service ministry following its own published ' +
+      'policy correctly. It scores a denial reaching for a version that took effect after the ' +
+      'date the ministry itself says is controlling. A rule that fires on correct behaviour ' +
+      'teaches staff to dismiss the whole report.',
     evaluate: (f) => {
+      // Absent a declared policy, fall back to enrolment — the strictest of the
+      // four, and the safe default for a ministry that has not said.
+      const policy = f.governing_version_rule ?? 'member_join';
+
+      const anchorFor = (d: (typeof f.denials)[number]): string | null => {
+        switch (policy) {
+          case 'date_of_service': return d.service_date ?? null;
+          case 'date_submitted': return d.submitted_at ?? null;
+          case 'date_received': return d.received_at ?? null;
+          default: return d.member_joined_at;
+        }
+      };
+
       const retroactive = f.denials.filter((d) => {
-        if (!d.denial_guideline_ref || !d.member_joined_at) return false;
+        if (!d.denial_guideline_ref) return false;
+        const anchor = anchorFor(d);
+        // No anchor date means we cannot tell, and cannot-tell is not a finding.
+        if (!anchor) return false;
         const version = f.guidelines.find((g) =>
           g.provisions.some((p) => p.code === d.denial_guideline_ref),
         );
         if (!version) return false;
-        return version.effective_from > d.member_joined_at.slice(0, 10);
+        return version.effective_from > anchor.slice(0, 10);
       });
       if (retroactive.length === 0) return NO;
+
+      const anchorLabel =
+        policy === 'date_of_service' ? 'the care was delivered'
+        : policy === 'date_submitted' ? 'the request was submitted'
+        : policy === 'date_received' ? 'the bills were received'
+        : 'the member joined';
+
       return hit(
         `${retroactive.length} denial${retroactive.length > 1 ? 's' : ''} applied a guideline ` +
-        'that took effect after the member joined',
+        `that took effect after ${anchorLabel}, which is the date this ministry's own published ` +
+        'policy makes controlling',
       );
     },
   },

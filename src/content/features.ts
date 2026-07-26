@@ -163,9 +163,8 @@ export const FEATURES: FeatureEntry[] = [
     title: 'The share ratio',
     body:
       'Of every dollar members contributed, how many cents reached their medical costs — ' +
-      'measured against the ACA medical-loss floor that health care sharing ministries are ' +
-      'statutorily exempt from. Clearing a bar you are not held to says something no marketing ' +
-      'page can.',
+      'measured against the ACA medical-loss floor that health care sharing ministries are not ' +
+      'held to. Clearing a bar you are not held to says something no marketing page can.',
     category: 'Financial integrity',
     tags: ['transparency', 'reporting', 'core'],
     status: 'shipped',

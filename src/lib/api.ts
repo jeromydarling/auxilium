@@ -178,6 +178,17 @@ export const api = {
       post<{ ok: true }>(`/claims/appeals/${appealId}/decide`, body),
   },
 
+  knowledge: {
+    index: () => get<KnowledgeIndex>('/knowledge'),
+    article: (slug: string) => get<{ article: KbArticle }>(`/knowledge/article/${slug}`),
+    search: (q: string) => get<{ results: KnowledgeHit[] }>(`/knowledge/search${query({ q })}`),
+    ask: (question: string, memberId?: string) =>
+      post<KnowledgeAnswer>('/knowledge/ask', { question, member_id: memberId }),
+    unhelpful: (question: string, slug?: string) =>
+      post<{ recorded: true }>('/knowledge/unhelpful', { question, slug }),
+    gaps: () => get<{ items: KnowledgeGap[] }>('/knowledge/gaps'),
+  },
+
   cms: {
     pages: () => get<{ items: CmsPageSummary[] }>('/cms/pages'),
     page: (id: string) => get<{ page: CmsPageRecord }>(`/cms/pages/${id}`),
@@ -672,4 +683,73 @@ export interface AppealRecord {
   claim_title: string;
   amount_requested_cents: number;
   denial_reason_code: string | null;
+}
+
+// ── Knowledge base ───────────────────────────────────────────────────────────
+
+export interface KbSource {
+  label: string;
+  url: string;
+  authority?: 'law' | 'regulator' | 'court' | 'research' | 'industry' | 'reporting';
+}
+
+export interface KbStep {
+  title: string;
+  body: string;
+  because?: string;
+}
+
+export interface KbArticle {
+  slug: string;
+  audience: 'staff' | 'member' | 'both';
+  category: string;
+  title: string;
+  summary: string;
+  body: { heading?: string; paragraphs: string[] }[];
+  steps?: KbStep[];
+  synonyms?: string[];
+  sources?: KbSource[];
+  related?: string[];
+  appPath?: string;
+  updated: string;
+}
+
+export interface KnowledgeIndex {
+  audience: 'staff' | 'member';
+  categories: { category: string; articles: { slug: string; title: string; summary: string }[] }[];
+  suggested: string[];
+}
+
+export interface KnowledgeHit {
+  slug: string;
+  title: string;
+  summary: string;
+  category: string;
+  /** Which query terms matched — this is what makes a result explainable. */
+  matched: string[];
+}
+
+/**
+ * An answer.
+ *
+ * `confidence` is about retrieval, not truth: "none" means say so rather than
+ * assembling a plausible paragraph out of the nearest three articles. `limits`
+ * is never decoration — it carries the disclaimers that keep an answer about a
+ * future sharing decision from reading as a decision.
+ */
+export interface KnowledgeAnswer {
+  question: string;
+  lead: string;
+  aboutYourAccount: string[];
+  steps: KbStep[];
+  articles: { slug: string; title: string; summary: string; appPath?: string }[];
+  sources: KbSource[];
+  limits: string[];
+  confidence: 'high' | 'partial' | 'none';
+}
+
+export interface KnowledgeGap {
+  question: string;
+  asked_count: number;
+  last_asked_at: string;
 }

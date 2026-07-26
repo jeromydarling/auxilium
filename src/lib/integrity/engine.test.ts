@@ -357,6 +357,71 @@ describe('guideline consistency — the pattern behind every case', () => {
     expect(findings[0].message).toMatch(/never agreed/);
   });
 
+  it('does not flag a time-of-service ministry following its own published rule', () => {
+    // The correction that matters most here. Four governing-version rules are in
+    // force across the category. Treating "newer than the join date" as per se
+    // wrong would raise a finding every time a time-of-service ministry behaved
+    // correctly — and a rule that fires on correct behaviour gets the whole
+    // report dismissed.
+    const findings = auditDenials(
+      facts({
+        governing_version_rule: 'date_of_service',
+        guidelines: [{ ...GUIDELINE, version: 'v3.0', effective_from: '2026-01-01' }],
+        denials: [denial({
+          member_joined_at: '2025-03-01T00:00:00.000Z',
+          service_date: '2026-04-02T00:00:00.000Z',
+        })],
+      }),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('still flags a time-of-service ministry reaching past the date of service', () => {
+    const findings = auditDenials(
+      facts({
+        governing_version_rule: 'date_of_service',
+        guidelines: [{ ...GUIDELINE, version: 'v3.0', effective_from: '2026-01-01' }],
+        denials: [denial({
+          member_joined_at: '2025-03-01T00:00:00.000Z',
+          service_date: '2025-11-14T00:00:00.000Z',
+        })],
+      }),
+    );
+    expect(findings[0].code).toBe('denial.retroactive');
+    expect(findings[0].message).toMatch(/care was delivered/);
+  });
+
+  it('says nothing when the governing date is missing rather than guessing', () => {
+    // Cannot-tell is not a finding. Scoring a denial whose anchor date we never
+    // received would put an accusation on the record built out of a gap in the
+    // data.
+    const findings = auditDenials(
+      facts({
+        governing_version_rule: 'date_submitted',
+        guidelines: [{ ...GUIDELINE, version: 'v3.0', effective_from: '2026-01-01' }],
+        denials: [denial({ member_joined_at: '2025-03-01T00:00:00.000Z', submitted_at: null })],
+      }),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('falls back to the join date when the ministry has not declared a policy', () => {
+    // The strictest of the four, and the right default: a ministry that has not
+    // said which version binds gets measured against the reading most
+    // protective of the member.
+    const findings = auditDenials(
+      facts({
+        guidelines: [{ ...GUIDELINE, version: 'v3.0', effective_from: '2026-01-01' }],
+        denials: [denial({
+          member_joined_at: '2025-03-01T00:00:00.000Z',
+          service_date: '2026-04-02T00:00:00.000Z',
+        })],
+      }),
+    );
+    expect(findings[0].code).toBe('denial.retroactive');
+    expect(findings[0].message).toMatch(/member joined/);
+  });
+
   it('flags "covered from day one" denied on exactly that basis', () => {
     // maternity.day_one supports no denial codes at all — denying under it is
     // precisely the marketing-versus-practice gap in the research.

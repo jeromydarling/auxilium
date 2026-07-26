@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 242 tests over domain logic and content integrity |
+| `bun run test` | Vitest — 372 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 
@@ -236,7 +236,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-242 tests over the logic that carries the risk: NRI scoring, integrity and
+372 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -290,8 +290,12 @@ doing this honestly, and from outside, before the lawsuits, they were nearly
 indistinguishable.
 
 The ratio is measured against the **ACA medical-loss floor (80% individual,
-85% large group)** — which health care sharing ministries are statutorily
-exempt from. That exemption is the entire reason to measure against it: a
+85% large group)** — which health care sharing ministries are not held to.
+Stated precisely, because the loose version is wrong: no provision exempts
+HCSMs from 45 CFR Part 158 by name. Part 158 binds *health insurance issuers*,
+and an HCSM is not one. (The statutory exemption HCSMs *do* have,
+26 U.S.C. § 5000A(d)(2)(B), is from the individual mandate — a different
+provision.) Not being held to it is the entire reason to measure against it: a
 ministry that clears a bar it is not held to has said something no marketing
 page can, and `/api/integrity/public/:slug` publishes exactly that, opt-in,
 with no member data in it.
@@ -321,7 +325,23 @@ deposition exhibit:
 - a denial citing no provision at all
 - a denial citing a provision that does not exist
 - a denial citing a provision that does not authorize the stated reason
-- **a denial applying a guideline that took effect after the member joined**
+- **a denial applying a guideline version the ministry's own policy does not
+  make governing**
+
+That last one is not "a newer guideline was applied", and the difference is the
+whole rule. Ministries publish at least four different answers to *which
+version binds a need*: the one in force at enrolment, at date of service, at
+submission, or when the bills were received — all four are in real use, and some
+add a grandfathering ratchet on top. Scoring the naive version would raise a
+serious finding against a time-of-service ministry every time it followed its
+own published policy correctly, and **a rule that fires on correct behaviour is
+worse than no rule** — it teaches staff the report is noise, and the real
+findings go with it. So the org declares its rule
+(`organizations.governing_version_rule`) and the finding is scored against the
+date that rule makes controlling. Undeclared falls back to enrolment, the
+strictest of the four: a ministry that has not said gets measured against the
+reading most protective of the member. A missing anchor date is *not* a finding
+— cannot-tell must never become an accusation built from a gap in the data.
 
 `POST /api/claims/:id/deny` requires both a reason code and a guideline
 reference. It warns loudly — but does not block — when the citation does not
@@ -330,8 +350,14 @@ accepts, and a recorded warning keeps the honest record instead.
 
 ### Claims that stop moving
 
-`sla_days` (default 17, the turnaround Share Healthcare publicly stated and
-missed by months) puts a due date on every claim at submission.
+`sla_days` puts a due date on every claim at submission. The asymmetry it
+corrects is documented: ministries publish hard deadlines *members* must meet
+(six months from date of service to submit a bill at several; 120 days at one)
+and publish no enforceable deadline of their own. Where that gap has been
+closed it has been closed by a regulator afterward — NY DFS imposed fixed
+payment deadlines on one ministry as a consent-order remedy. The default (17)
+is not inherited from anyone: it is the ministry's own commitment, set per
+organization, deliberately tighter than any published turnaround.
 
 Two design decisions worth keeping:
 
@@ -534,6 +560,89 @@ financially stranded: SLA breach, unacknowledged claim, denial without a
 guideline, incomplete intake, stalled secondary-payer coordination, overdue
 appeal.
 
+
+---
+
+## The knowledge base
+
+Two libraries, one index. Staff need to know how to operate the software and
+how to make a decision that holds up. Members need to know what is happening to
+their bill, what they may ask for, and what to do when the answer is no. The
+second group is the one this has to serve well: they are reading because
+something went wrong, and the alternative to a good answer is a phone call they
+may not make.
+
+| | |
+|---|---|
+| `src/lib/knowledge/staff.ts` | Operating the product, and deciding defensibly |
+| `src/lib/knowledge/member.ts` | Process, rights, and what to do when declined |
+| `src/lib/knowledge/search.ts` | Term scoring, field weights, the audience rule |
+| `src/lib/knowledge/answer.ts` | Library + the asker's own record → an answer |
+| `workers/api/knowledge.ts` | Browse, search, ask, gaps, ministry articles |
+| `src/features/nri/AskPanel.tsx` | Ask, inside the compass drawer |
+
+**Retrieval is term scoring, not embeddings**, for the same three reasons the
+NRI rules are not a model: it is explainable (a wrong answer can be shown its
+matched terms and fixed with a one-line synonym), deterministic (the same
+question returns the same articles in eighteen months), and it needs no key and
+no network — the knowledge base has to work on the day the ministry most needs
+it, not the day the vendor is up. **There is no generation step anywhere.**
+
+**An answer combines the library with the asker's own record.** Either alone is
+close to useless: "claims are usually reviewed within 17 days" does not help
+someone on day 40, and "your claim is on day 40" does not say what to do. The
+render order is the argument — account facts, then the answer, then steps, then
+limits, then sources. Limits sit *above* sources because a caveat under a
+citation reads as boilerplate, and this caveat is what stops someone acting on
+false reassurance.
+
+**No outcome is ever promised.** "Likely" is the strongest available word about
+a future decision — the same discipline the eligibility check follows, and for
+the same reason. A member told "you're covered" and then declined has been
+harmed twice.
+
+**Audience isolation is deliberately one-way** (`readableBy`). A member must
+never reach staff operations material; staff read member articles freely,
+because someone on the phone with a frightened member needs to see exactly what
+that member has been told. Hiding it would mean the people answering the
+questions cannot read the answers. A live check caught this the wrong way
+round.
+
+**Every legal claim carries a source, and a test enforces it.** Member articles
+matching a legal-assertion pattern must have at least one source with a real
+URL. The rule is narrow on purpose: a guard that flags every use of "state" or
+"require" gets muted, and then it guards nothing.
+
+### The two things members most need and least know
+
+Both came out of research, and both are worth more than most features:
+
+- **Appealing works about half the time and almost nobody does it.** Colorado's
+  2024 filings — the only compelled per-ministry data in the country — record
+  13,741 denials, 111 appeals, and 54 of those approved. Under one percent
+  appealed; roughly half of the appeals succeeded.
+- **The leverage is against the hospital, not the ministry.** Sharing cannot be
+  compelled; a nonprofit hospital's obligations can. Members get a ~240-day
+  financial-assistance window, a 120-day floor before extraordinary collection
+  actions, and a cap at amounts generally billed rather than list price. And
+  because sharing is not insurance, CMS treats members as **uninsured** for the
+  No Surprises Act — which *grants* them a Good Faith Estimate and the
+  $400/120-day dispute process, while *withholding* balance-billing protection.
+  That asymmetry is stated explicitly rather than smoothed over.
+
+### Ministry articles
+
+`kb_articles` layers a ministry's own answers over the platform library, and a
+matching slug wins. If a ministry has written its own answer about its own
+waiting period, that answer is the correct one.
+
+### Unanswered questions are the product
+
+Every question is recorded with the confidence of its answer. `/knowledge/gaps`
+lists the ones that matched nothing — each is either an article worth writing or
+a wording members use that the articles do not. "This did not help" is
+volunteered, never inferred: asking again is not evidence the answer was wrong,
+and treating it as such would fill the report with noise.
 
 ---
 
