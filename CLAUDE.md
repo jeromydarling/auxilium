@@ -1258,6 +1258,20 @@ sees the request. Unknown public paths return a **real 404**, not the SPA shell
 The SPA is mounted with `basename="/app"`, so every `<Link to="/members">` in
 the app keeps working unchanged.
 
+**The SPA is split by audience, not by route.** A member opening their bill on a
+phone was downloading the roster importer, the integrity centre, the site builder
+and the brand studio — a few hundred kilobytes of software they have no
+permission to reach. Same for a stranger filling in an application. The shared
+chunk is now 96KB gzipped rather than 142KB, and each audience loads only its own
+pages on top. Split at the audience boundary because that is where the boundary
+already is: `/portal/*` and the staff tree mount different auth providers. The
+knowledge base is lazy too, even though both audiences reach it, because Rollup
+hoists a shared module rather than duplicating it — importing it eagerly to
+"avoid duplication" would only guarantee that a stranger downloads every staff
+operations article. The Suspense fallback is a worded loading state rather than
+blank, because a blank screen mid-navigation on a bad connection is
+indistinguishable from the app being broken.
+
 ### Adding a page
 
 Add it to `src/content/pages.ts`, `pages-more.ts`, `guides.ts`, or
@@ -1413,6 +1427,11 @@ requested thing that does not exist.
 `subject_type='household'`. Scoring the household directly is cleaner than the
 current primary-contact proxy, and would let the board show a household as a
 single row with its members underneath.
+
+**A nightly reconciliation.** `GET /api/billing/periods/:period/reconcile`
+exists and nothing calls it on a schedule. The monthly close cron is the natural
+place; the reason it is not wired yet is that nobody has decided who gets told
+when it does not balance.
 
 **Notification delivery.** Signals are computed and displayed but never pushed.
 A daily digest of urgent members, with one-click unsubscribe, is the highest-value

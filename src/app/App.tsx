@@ -1,35 +1,93 @@
+import { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './AuthContext';
 import { MemberAuthProvider, useMemberAuth } from './MemberAuthContext';
 import { PortalShell } from './PortalShell';
-import { PortalLoginPage } from '@/routes/portal/PortalLoginPage';
-import { PortalAcceptPage } from '@/routes/portal/PortalAcceptPage';
-import { PortalClaimsPage } from '@/routes/portal/PortalClaimsPage';
-import { PortalClaimDetailPage } from '@/routes/portal/PortalClaimDetailPage';
-import { PortalRightsPage } from '@/routes/portal/PortalRightsPage';
-import { PortalHealthPage } from '@/routes/portal/PortalHealthPage';
-import { ApplyPage } from '@/routes/ApplyPage';
-import { ApplicationsPage } from '@/routes/ApplicationsPage';
-import { ApplicationDetailPage } from '@/routes/ApplicationDetailPage';
 import { AppShell } from './AppShell';
 import { LoginPage } from '@/routes/LoginPage';
-import { DashboardPage } from '@/routes/DashboardPage';
-import { MembersPage } from '@/routes/MembersPage';
-import { MemberDetailPage } from '@/routes/MemberDetailPage';
-import { HouseholdsPage } from '@/routes/HouseholdsPage';
-import { HouseholdDetailPage } from '@/routes/HouseholdDetailPage';
-import { ImportsPage } from '@/routes/ImportsPage';
-import { ImportDetailPage } from '@/routes/ImportDetailPage';
-import { NeedsPage } from '@/routes/NeedsPage';
-import { PrayerBoardPage } from '@/routes/PrayerBoardPage';
-import { CommandCenterPage } from '@/routes/CommandCenterPage';
-import { KnowledgePage } from '@/routes/KnowledgePage';
-import { KnowledgeArticlePage } from '@/routes/KnowledgeArticlePage';
-import { SettingsPage } from '@/routes/SettingsPage';
-import { SiteBuilder } from '@/features/cms/SiteBuilder';
-import { RulesPage } from '@/routes/RulesPage';
-import { IntegrityPage } from '@/routes/IntegrityPage';
-import { EscalationsPage } from '@/routes/EscalationsPage';
+
+/**
+ * Code splitting, by **audience** rather than by route.
+ *
+ * The three groups here want almost nothing in common. A member opening their
+ * bill on a phone was downloading the roster importer, the integrity centre, the
+ * site builder and the brand studio — a few hundred kilobytes of software they
+ * have no permission to reach. Same for a stranger filling in an application.
+ *
+ * That matters more here than in most products because of who these people are
+ * and when they read this: somebody in a hospital car park deciding whether to
+ * submit a bill. It is the same argument that keeps the marketing and ministry
+ * sites at zero JavaScript, applied to the one surface that genuinely needs some.
+ *
+ * Split at the audience boundary because that is where the boundary already is:
+ * `/portal/*` and the staff tree mount different auth providers and share almost
+ * nothing. The knowledge base is the exception — both audiences reach it — and it
+ * is lazy too, because Rollup hoists a module used by two chunks into a shared
+ * one rather than duplicating it. Eagerly importing it to "avoid duplication"
+ * would only guarantee that the stranger filling in an application downloads
+ * every staff operations article.
+ *
+ * These are named exports, hence the `.then` unwrapping. A default export per
+ * page would be tidier here and worse everywhere else.
+ */
+const lazyPage = <T extends Record<string, unknown>>(
+  load: () => Promise<T>,
+  name: keyof T,
+) => lazy(() => load().then((m) => ({ default: m[name] as React.ComponentType })));
+
+// ── The stranger ─────────────────────────────────────────────────────────────
+const ApplyPage = lazyPage(() => import('@/routes/ApplyPage'), 'ApplyPage');
+
+// ── Both audiences. Hoisted into a shared chunk, not duplicated. ─────────────
+const KnowledgePage = lazyPage(() => import('@/routes/KnowledgePage'), 'KnowledgePage');
+const KnowledgeArticlePage = lazyPage(
+  () => import('@/routes/KnowledgeArticlePage'),
+  'KnowledgeArticlePage',
+);
+
+// ── The member ───────────────────────────────────────────────────────────────
+const PortalLoginPage = lazyPage(() => import('@/routes/portal/PortalLoginPage'), 'PortalLoginPage');
+const PortalAcceptPage = lazyPage(() => import('@/routes/portal/PortalAcceptPage'), 'PortalAcceptPage');
+const PortalClaimsPage = lazyPage(() => import('@/routes/portal/PortalClaimsPage'), 'PortalClaimsPage');
+const PortalClaimDetailPage = lazyPage(() => import('@/routes/portal/PortalClaimDetailPage'), 'PortalClaimDetailPage');
+const PortalRightsPage = lazyPage(() => import('@/routes/portal/PortalRightsPage'), 'PortalRightsPage');
+const PortalHealthPage = lazyPage(() => import('@/routes/portal/PortalHealthPage'), 'PortalHealthPage');
+
+// ── Staff ────────────────────────────────────────────────────────────────────
+const DashboardPage = lazyPage(() => import('@/routes/DashboardPage'), 'DashboardPage');
+const MembersPage = lazyPage(() => import('@/routes/MembersPage'), 'MembersPage');
+const MemberDetailPage = lazyPage(() => import('@/routes/MemberDetailPage'), 'MemberDetailPage');
+const HouseholdsPage = lazyPage(() => import('@/routes/HouseholdsPage'), 'HouseholdsPage');
+const HouseholdDetailPage = lazyPage(() => import('@/routes/HouseholdDetailPage'), 'HouseholdDetailPage');
+const ImportsPage = lazyPage(() => import('@/routes/ImportsPage'), 'ImportsPage');
+const ImportDetailPage = lazyPage(() => import('@/routes/ImportDetailPage'), 'ImportDetailPage');
+const NeedsPage = lazyPage(() => import('@/routes/NeedsPage'), 'NeedsPage');
+const PrayerBoardPage = lazyPage(() => import('@/routes/PrayerBoardPage'), 'PrayerBoardPage');
+const CommandCenterPage = lazyPage(() => import('@/routes/CommandCenterPage'), 'CommandCenterPage');
+const IntegrityPage = lazyPage(() => import('@/routes/IntegrityPage'), 'IntegrityPage');
+const EscalationsPage = lazyPage(() => import('@/routes/EscalationsPage'), 'EscalationsPage');
+const ApplicationsPage = lazyPage(() => import('@/routes/ApplicationsPage'), 'ApplicationsPage');
+const ApplicationDetailPage = lazyPage(() => import('@/routes/ApplicationDetailPage'), 'ApplicationDetailPage');
+const SettingsPage = lazyPage(() => import('@/routes/SettingsPage'), 'SettingsPage');
+const SiteBuilder = lazyPage(() => import('@/features/cms/SiteBuilder'), 'SiteBuilder');
+const RulesPage = lazyPage(() => import('@/routes/RulesPage'), 'RulesPage');
+
+/**
+ * What a chunk boundary looks like while it loads.
+ *
+ * Not a spinner and not blank. On a fast connection this is never seen; on a bad
+ * one it is seen for a second or two, and a blank screen at that moment is
+ * indistinguishable from the app being broken — which is the impression this
+ * audience least needs. The wording matches the auth-loading state above it, so
+ * a slow sign-in and a slow chunk read as one wait rather than two.
+ */
+function PageLoading() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <p className="text-sm text-muted-foreground">Loading…</p>
+    </div>
+  );
+}
 
 export function App() {
   // Which tree you land in is decided by the path, before either auth provider
@@ -39,12 +97,21 @@ export function App() {
     <Routes>
       {/* Public: no session, no auth provider. Somebody applying to a ministry
           does not have an account yet, which is the whole point. */}
-      <Route path="/apply/:slug" element={<ApplyPage />} />
+      <Route
+        path="/apply/:slug"
+        element={
+          <Suspense fallback={<PageLoading />}>
+            <ApplyPage />
+          </Suspense>
+        }
+      />
       <Route
         path="/portal/*"
         element={
           <MemberAuthProvider>
-            <PortalRoutes />
+            <Suspense fallback={<PageLoading />}>
+              <PortalRoutes />
+            </Suspense>
           </MemberAuthProvider>
         }
       />
@@ -52,7 +119,9 @@ export function App() {
         path="*"
         element={
           <AuthProvider>
-            <AppRoutes />
+            <Suspense fallback={<PageLoading />}>
+              <AppRoutes />
+            </Suspense>
           </AuthProvider>
         }
       />
