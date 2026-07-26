@@ -132,6 +132,23 @@ jobs:
           probe "KV"     optional GET "$API/accounts/$ACCOUNT_ID/storage/kv/namespaces"
           probe "Queues" optional GET "$API/accounts/$ACCOUNT_ID/queues"
 
+          # Deploys can also originate from Cloudflare Workers Builds, which
+          # runs against this repo independently of Actions. Report what is
+          # actually in the account so a surprise second Worker — or a build
+          # that landed somewhere unexpected — is visible here rather than
+          # discovered later by someone loading the wrong URL.
+          echo ""
+          echo "Workers in this account named auxilium*:"
+          curl -sS -H "$AUTH" "$API/accounts/$ACCOUNT_ID/workers/scripts" 2>/dev/null \
+            | jq -r '[.result[].id | select(startswith("auxilium"))] | if length == 0 then "  (none)" else .[] | "  " + . end' \
+            2>/dev/null || echo "  (could not list)"
+
+          SUBDOMAIN=$(curl -sS -H "$AUTH" "$API/accounts/$ACCOUNT_ID/workers/subdomain" 2>/dev/null \
+            | jq -r '.result.subdomain // empty' 2>/dev/null || true)
+          if [ -n "$SUBDOMAIN" ]; then
+            echo "workers.dev subdomain: $SUBDOMAIN"
+          fi
+
           echo ""
           if [ "$HARD_FAIL" = "1" ]; then
             echo "::error::The Cloudflare API token is missing a permission the deploy requires (see ✗ above)."

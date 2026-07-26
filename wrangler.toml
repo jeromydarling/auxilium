@@ -21,6 +21,21 @@ main = "workers/index.ts"
 compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat"]
 
+# Build the SPA before any deploy, so `wrangler deploy` is self-sufficient.
+#
+# The package.json scripts chain `bun run build && wrangler deploy`, which is
+# fine when the deploy starts here — but deploys now also originate from
+# Cloudflare Workers Builds, which runs its own command against this repo. A
+# bare `wrangler deploy` with no prior build ships a Worker whose [assets]
+# directory is missing or stale: the marketing pages still render, because the
+# Worker generates those, but every /app/* route and every JS/CSS bundle 404s.
+#
+# Putting it here means the build cannot be forgotten by whoever invokes the
+# deploy. It also runs before `wrangler dev`, which needs dist/client for the
+# same reason.
+[build]
+command = "bun run build"
+
 # Smart Placement moves the Worker close to D1 rather than to the eyeball.
 # Auxilium is read-heavy against D1 on nearly every route, so this is the right
 # default. Remove it if you later add latency-sensitive edge-only paths.
