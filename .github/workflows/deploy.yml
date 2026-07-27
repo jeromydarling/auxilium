@@ -248,7 +248,16 @@ jobs:
       - name: Deploy
         run: |
           set -o pipefail
-          bunx wrangler deploy --env "$TARGET_ENV" 2>&1 | tee /tmp/deploy.log
+          # Stamp the build with the commit that produced it.
+          #
+          # Without this, `APP_VERSION` is unset and every error report and bug
+          # report says "unknown" for the version — so a report from a ministry
+          # that has not reloaded in a fortnight gets debugged against code they
+          # are not running. Passed as a var rather than a secret because it is
+          # a public commit sha, and it is on the deploy command rather than in
+          # wrangler.toml because the value is only known here.
+          bunx wrangler deploy --env "$TARGET_ENV" \
+            --var APP_VERSION:"${GITHUB_SHA::7}" 2>&1 | tee /tmp/deploy.log
 
           DEPLOYED_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' /tmp/deploy.log | head -1)
           if [ -n "$DEPLOYED_URL" ]; then
