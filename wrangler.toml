@@ -24,7 +24,7 @@
 # deploy` from anywhere silently republished production bound to the *dev*
 # D1, R2, and KV. That is exactly what Cloudflare Workers Builds was doing on
 # every push. Different name, and that class of accident stops being possible.
-name = "auxilium-dev"
+name = "auxilium"
 main = "workers/index.ts"
 compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat"]
