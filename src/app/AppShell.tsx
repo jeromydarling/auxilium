@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Home, Upload, HeartHandshake, HandHeart,
   Compass, Settings, LogOut, ShieldCheck, Scale, Siren, BookOpen, Inbox, Globe,
@@ -6,6 +6,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuth } from './AuthContext';
+import { ErrorBoundary } from './ErrorBoundary';
 import { CompassLauncher } from '@/features/nri/CompassDrawer';
 
 /**
@@ -57,6 +58,7 @@ const NAV_GROUPS: { label: string; items: { to: string; label: string; icon: typ
 export function AppShell() {
   const { user, org, signOut } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
 
   const handleSignOut = async () => {
     await signOut();
@@ -120,8 +122,16 @@ export function AppShell() {
         </div>
       </nav>
 
+      {/* A second boundary, inside the shell.
+          The root one in main.tsx catches everything, but it replaces the whole
+          screen — including the navigation. One broken page then looks like a
+          broken product, and the way out is a link the person can no longer
+          see. Keyed on the path so walking to another page clears it, which is
+          the ordinary way somebody recovers. */}
       <main className="min-w-0 flex-1">
-        <Outlet />
+        <ErrorBoundary key={pathname} area={`staff:${pathname}`}>
+          <Outlet />
+        </ErrorBoundary>
       </main>
 
       <CompassLauncher />

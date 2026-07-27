@@ -82,6 +82,20 @@ auth.get('/me', async (c) => {
   return c.json({
     user,
     org: org ? { ...org, brand: safeJson(org.brand) } : null,
+    // Reporting config rides along on the call the app already makes at boot.
+    //
+    // Served rather than baked in at build time for two reasons. It keeps the
+    // DSN out of the repository, so a fork does not report into this account.
+    // And it is only ever sent to a request that already resolved a staff
+    // session — a member's `/api/member/me` carries none of this, so the
+    // portal never learns the DSN and never loads the SDK. That is what makes
+    // "staff only" a property of the server rather than a check in the client
+    // that somebody later forgets.
+    observability: {
+      dsn: c.env.SENTRY_DSN ?? null,
+      environment: c.env.APP_ENV ?? 'development',
+      release: c.env.APP_VERSION ?? null,
+    },
   });
 });
 

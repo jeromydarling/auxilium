@@ -25,6 +25,8 @@ import { normalizeDomain } from '../src/lib/cms/domains';
 import { renderNotFound } from './marketing/render';
 import { closeAllDuePeriods, reconcileAllOrgs } from './lib/billing-service';
 import { raiseAlert, resolveAlert } from './lib/alerts';
+import { reportServerError, redactRoute, sentryOptions } from './lib/observability';
+import { withSentry } from '@sentry/cloudflare';
 import { handleImportBatch } from './queues/imports';
 import { handleSignalBatch } from './queues/signals';
 
@@ -266,13 +268,36 @@ app.notFound((c) => {
 /**
  * Error handler. Logs the detail, returns a message a human can act on, and
  * never leaks a stack trace to the browser.
+ *
+ * The sentence it returns used to say "the team has been notified" while
+ * nothing anywhere notified anybody — the error went to `console.error` in a
+ * Worker log nobody was watching. That is the same class of untruth as the
+ * monthly close reporting "0 failed" no matter what happened, and it is worse
+ * here because it is said directly to the person affected: somebody who is told
+ * we already know does not report it, so the reassurance is what *stops* us
+ * finding out. Reporting is wired now, and the claim is conditional on the
+ * reporting actually being configured.
  */
 app.onError((error, c) => {
-  console.error(`[error] ${c.req.method} ${c.req.path}:`, error);
+  const requestId = c.req.header('CF-Ray') ?? null;
+
+  reportServerError(c.env, error, {
+    entry: 'api',
+    route: redactRoute(c.req.path),
+    method: c.req.method,
+    requestId,
+    orgId: c.get('user')?.org_id ?? null,
+    userId: c.get('user')?.id ?? null,
+  });
+
   return c.json(
     {
-      error: 'Something went wrong on our end. The team has been notified.',
-      request_id: c.req.header('CF-Ray') ?? null,
+      error: c.env.SENTRY_DSN
+        ? 'Something went wrong on our end. We have been told about it automatically.'
+        : // Without reporting configured, the honest version asks for the one
+          // thing that will actually bring it to somebody's attention.
+          'Something went wrong on our end. Reporting it will tell us what happened.',
+      request_id: requestId,
     },
     500,
   );
@@ -364,7 +389,19 @@ async function reconcile(env: Env, now: Date): Promise<void> {
  * whatever was enqueued, and the narrowing to a job type is only sound because
  * we just checked which queue it came from.
  */
-export default {
+/**
+ * The handler, wrapped for error reporting.
+ *
+ * `withSentry` covers all three entry points below — fetch, scheduled, and
+ * queue — which is why it wraps here rather than being called per-route. The
+ * cron and the queue consumer are the two that matter most: an API failure has
+ * a person watching a spinner, and a failed monthly close at 06:00 on the 1st
+ * has nobody at all.
+ *
+ * `sentryOptions` returns undefined without `SENTRY_DSN`, which disables the
+ * wrapper entirely rather than starting a client with nowhere to send.
+ */
+export default withSentry(sentryOptions, {
   fetch: app.fetch,
 
   /**
@@ -423,4 +460,4 @@ export default {
         batch.ackAll();
     }
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env>);

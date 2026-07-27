@@ -52,6 +52,25 @@ export interface Env {
   NRI_SIGNAL_TTL_SECONDS: string;
   IMPORT_MAX_ROWS: string;
 
+  /**
+   * Error reporting.
+   *
+   * A Sentry DSN is not a secret in the way an API key is — the browser half is
+   * published in the bundle by design, and it grants nothing but the ability to
+   * send events in. It is configured rather than committed anyway, because the
+   * one in this file would be the one every fork of this repo reported into.
+   *
+   * Absent means reporting is off and nothing else changes: failures are still
+   * logged, the API still returns a request id, and the in-app bug report still
+   * carries the errors that preceded it.
+   */
+  SENTRY_DSN?: string;
+  /**
+   * Stamped on every event so an error can be traced to the deploy that
+   * introduced it. Set by CI from the commit sha.
+   */
+  APP_VERSION?: string;
+
   // Secrets — every one of these is optional at the type level on purpose.
   // Auxilium runs fully without them; see .dev.vars.example for what each
   // unlocks and how the product degrades when it is absent.

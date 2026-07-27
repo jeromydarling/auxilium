@@ -26,16 +26,38 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * The request never reached the Worker: offline, DNS, a captive portal, a
+ * cancelled navigation.
+ *
+ * `fetch` rejects with a bare TypeError for all of these, which arrives at a
+ * `catch` indistinguishable from a genuine bug in our own code. Normalising it
+ * to an ApiError with status 0 is what lets the error layer say "you appear to
+ * be offline, nothing was sent and nothing you typed is lost" instead of
+ * "something went wrong" — and those two lead somebody to do different things.
+ */
+export const NETWORK_ERROR_STATUS = 0;
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`/api${path}`, {
-    // Session cookie is HttpOnly; it must ride along on every call.
-    credentials: 'same-origin',
-    headers:
-      init.body && !(init.body instanceof FormData)
-        ? { 'Content-Type': 'application/json', ...init.headers }
-        : init.headers,
-    ...init,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, {
+      // Session cookie is HttpOnly; it must ride along on every call.
+      credentials: 'same-origin',
+      headers:
+        init.body && !(init.body instanceof FormData)
+          ? { 'Content-Type': 'application/json', ...init.headers }
+          : init.headers,
+      ...init,
+    });
+  } catch (cause) {
+    throw new ApiError(
+      cause instanceof Error ? cause.message : 'The request could not be sent.',
+      NETWORK_ERROR_STATUS,
+      null,
+      null,
+    );
+  }
 
   // The error shape is the only part of a response this function reads, so it
   // is the only part worth typing here; the success payload is the caller's `T`.
@@ -322,6 +344,18 @@ export interface MeResponse {
   user: SessionUser | null;
   org?: OrgRecord | null;
   demo?: boolean;
+  /**
+   * Error-reporting config, served rather than built in.
+   *
+   * Only ever present on the staff endpoint. The member portal's `/member/me`
+   * deliberately does not carry it, which is what makes "staff only" a fact
+   * about the server rather than a check in the client somebody can forget.
+   */
+  observability?: {
+    dsn: string | null;
+    environment: string;
+    release: string | null;
+  };
 }
 
 export type Direction = 'cura' | 'onus' | 'familia' | 'fides';

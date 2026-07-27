@@ -13,6 +13,27 @@ import path from 'node:path';
  */
 export default defineConfig({
   plugins: [react()],
+  /**
+   * Sentry's tree-shaking flags.
+   *
+   * Without these the error-reporting chunk builds at 163KB gzipped, because
+   * the package's index re-exports session replay (which carries all of rrweb),
+   * browser tracing, and the feedback widget — none of which this product uses,
+   * and one of which it must never have: replay records the screen, and the
+   * screen here is somebody's medical claim.
+   *
+   * Setting them to `false` lets Rollup drop those branches at build time. They
+   * are declared as globals the bundler substitutes, so a missing one is a
+   * silent regression in size rather than an error — which is why the size is
+   * asserted in a test rather than left to whoever next reads the build output.
+   */
+  define: {
+    __SENTRY_DEBUG__: 'false',
+    __SENTRY_TRACING__: 'false',
+    __RRWEB_EXCLUDE_IFRAME__: 'true',
+    __RRWEB_EXCLUDE_SHADOW_DOM__: 'true',
+    __SENTRY_EXCLUDE_REPLAY_WORKER__: 'true',
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
