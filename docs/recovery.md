@@ -19,7 +19,7 @@ Ranked by how badly it goes and how likely it is.
 | **A seed re-run against the wrong database.** The one destructive operation in the repo. `schema/seed-reset.sql` deletes by two hard-coded demo org ids, so a real ministry is untouched even if it is run in production — but a typo in those ids would not be. | Time Travel to the minute before. |
 | **A soft delete somebody meant, and then didn't.** `deleted_at` rather than `DELETE`, everywhere. | `UPDATE … SET deleted_at = NULL`. No restore needed. |
 | **A migration that drops or rebuilds a table.** SQLite cannot alter a CHECK constraint or drop a foreign key in place, so several migrations rebuild tables. A rebuild with a wrong column list loses a column's contents silently. | Time Travel, and read the note below about migrations. |
-| **A ministry deleting its own guidelines or pages.** Ordinary product behaviour, not a failure. | `cms_pages` is soft-deleted; `sharing_guidelines` is **not**. See the gap at the bottom. |
+| **A ministry deleting its own guidelines or pages.** Ordinary product behaviour, not a failure. | Both soft-deleted. A guideline withdrawal is refused outright once anything cites it, and a correction archives the previous text to `guideline_revisions`. |
 | **The whole database.** Cloudflare would have to lose it. | Time Travel, then the export below. |
 
 ---
@@ -120,11 +120,9 @@ Two rules, both learned from the table rebuilds in `0007`:
 
 Written down rather than fixed, so the next person is not surprised by them.
 
-- **`sharing_guidelines` has no `deleted_at`.** A ministry deleting a version
-  loses the document its past declines were scored against — and the integrity
-  report will then flag every one of those declines as citing a provision that
-  does not exist. Soft-deleting the table is the fix; the API currently has no
-  delete endpoint for it, which is the only reason this has not bitten.
+- ~~`sharing_guidelines` has no `deleted_at`.~~ Fixed. Withdrawal is a soft
+  delete and is refused the moment anything cites the version; corrections
+  archive the previous text to `guideline_revisions` rather than overwriting it.
 - **No automated backup schedule.** Time Travel is the backup. There is no
   nightly export to R2, so recovery beyond 30 days is not possible at all.
 - **Restore has been rehearsed against a scratch database, never against

@@ -54,7 +54,23 @@ command = "bun run build"
 # period that has not ended, so a retried or double-fired trigger cannot
 # double-bill.
 [triggers]
-crons = ["0 6 1 * *"]
+# Two schedules, one handler. Cloudflare does not tell a Worker which cron
+# fired, so `scheduled` reconciles on every firing and closes the month only
+# when the date is the 1st — the close is idempotent and refuses a period that
+# has not ended, so reading the date wrong is a no-op rather than a double-bill.
+#
+# 05:00 daily: repair any gap between Stripe and the ledger. A webhook Stripe
+# never delivered heals within a day and nobody is told, which is the point.
+#
+# 06:00 on the 1st: the month's close. Note that on the 1st *both* schedules
+# fire and both take the close path — the handler always reconciles before it
+# closes, so the ordering that matters (repair the month before invoicing a
+# percentage of it) holds within a single firing rather than between the two.
+# The second firing is an idempotent retry: `closePeriod` returns a period past
+# 'open' untouched and Stripe's idempotency keys are derived from org and
+# period, so it cannot double-bill — and if the 05:00 close failed for a
+# transient reason, 06:00 quietly fixes it.
+crons = ["0 5 * * *", "0 6 1 * *"]
 
 # Smart Placement moves the Worker close to D1 rather than to the eyeball.
 # Auxilium is read-heavy against D1 on nearly every route, so this is the right
@@ -173,7 +189,7 @@ run_worker_first = true
 enabled = true
 
 [env.preview.triggers]
-crons = ["0 6 1 * *"]
+crons = ["0 5 * * *", "0 6 1 * *"]
 
 [env.preview.vars]
 APP_ENV = "preview"
@@ -246,7 +262,7 @@ run_worker_first = true
 enabled = true
 
 [env.production.triggers]
-crons = ["0 6 1 * *"]
+crons = ["0 5 * * *", "0 6 1 * *"]
 
 [env.production.vars]
 APP_ENV = "production"

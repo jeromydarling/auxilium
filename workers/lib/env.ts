@@ -26,6 +26,19 @@ export interface Env {
    * site resolvable as a ministry the moment somebody claimed the hostname.
    */
   APP_HOST?: string;
+
+  /**
+   * Operational alert delivery.
+   *
+   * All optional. With none of them set, alerts are still raised and stored —
+   * they simply are not delivered, and `/api/health` says so. An unconfigured
+   * mail provider must mean an undelivered alert, never a lost one.
+   */
+  RESEND_API_KEY?: string;
+  /** The From address. Must be on a domain verified with the mail provider. */
+  ALERT_FROM_EMAIL?: string;
+  /** Where operator alerts go. Comma-separated for more than one. */
+  ALERT_EMAIL?: string;
   NRI_SIGNAL_TTL_SECONDS: string;
   IMPORT_MAX_ROWS: string;
 

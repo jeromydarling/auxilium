@@ -258,6 +258,11 @@ export const api = {
     gaps: () => get<{ items: KnowledgeGap[] }>('/knowledge/gaps'),
   },
 
+  alerts: {
+    list: () => get<{ items: MinistryAlert[] }>('/admin/alerts'),
+    ack: (id: string) => post<{ ok: true }>(`/admin/alerts/${id}/ack`, {}),
+  },
+
   cms: {
     /** The editor's whole view — pages, live data, review, publish state. */
     site: () => get<SiteView>('/cms/site'),
@@ -603,6 +608,18 @@ export interface CmsPageRecord extends CmsPageSummary {
  * one the renderer uses, and the symptom would be a preview that does not match
  * the published page — the exact failure the whole design is arranged to avoid.
  */
+export interface MinistryAlert {
+  id: string;
+  severity: 'info' | 'warning' | 'critical';
+  kind: string;
+  title: string;
+  body: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  seen_count: number;
+  acked_at: string | null;
+}
+
 export interface DomainView {
   domain: string | null;
   verified_at?: string | null;

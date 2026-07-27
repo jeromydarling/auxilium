@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { intVar } from '../lib/env';
+import { intVar, type Env } from '../lib/env';
 import { requireUser, requireRole, currentUser, type AppEnv } from '../lib/auth';
 import { all, first, run, json } from '../lib/db';
 import { param } from '../lib/http';
@@ -11,6 +11,7 @@ import { computeIntegrity } from '../../src/lib/integrity/engine';
 import { INTEGRITY_RULES, INTEGRITY_RULES_VERSION } from '../../src/lib/integrity/rules';
 import { shareRatioBps, formatBps } from '../../src/lib/integrity/mlr';
 import { ACA_MLR_INDIVIDUAL_BPS, ACA_MLR_LARGE_GROUP_BPS } from '../../src/lib/integrity/types';
+import { canChange, correctionImpact } from '../../src/lib/integrity/guidelines';
 import { newId } from '../../src/lib/ids';
 import { nowIso } from '../../src/lib/utils';
 
@@ -300,5 +301,188 @@ integrity.post('/guidelines', requireLeadership, async (c) => {
   await c.env.CACHE.delete(`integrity:${user.org_id}`).catch(() => {});
   return c.json({ id }, 201);
 });
+
+/**
+ * Correct a published version, in place.
+ *
+ * In place — not a new row — because `member_applications.guideline_version_id`
+ * points here and the unique index on (org_id, version) means a corrected copy
+ * could not carry the same label anyway. The previous text is archived to
+ * `guideline_revisions` first, so nothing is lost: what a decline was actually
+ * judged against stays readable, which is the artefact a dispute turns on.
+ *
+ * A reason is required. A correction with no stated reason is indistinguishable
+ * from a quiet rewrite, and that distinction is the entire point of the table.
+ */
+integrity.patch('/guidelines/:id', requireLeadership, async (c) => {
+  const user = (await currentUser(c))!;
+  const id = param(c, 'id');
+  const body = await c.req.json<Record<string, unknown>>();
+
+  const reason = String(body.reason ?? '').trim();
+  if (reason.length < 10) {
+    return c.json(
+      { error: 'Say why this is being corrected — it is kept with the previous wording.' },
+      400,
+    );
+  }
+
+  const current = await first<Record<string, unknown>>(
+    c.env.DB,
+    'SELECT * FROM sharing_guidelines WHERE id = ? AND org_id = ? AND deleted_at IS NULL',
+    id, user.org_id,
+  );
+  if (!current) return c.json({ error: 'That guideline version was not found.' }, 404);
+
+  const usage = await guidelineUsage(c.env, user.org_id, current.version as string, id);
+  const verdict = canChange('correction', usage);
+  const now = nowIso();
+
+  await c.env.DB.batch([
+    // Archive first. If the update failed after this, the worst outcome is a
+    // revision row for a change that did not happen — recoverable, and visibly
+    // odd. The other order loses the previous text outright.
+    c.env.DB.prepare(
+      `INSERT INTO guideline_revisions
+         (id, org_id, guideline_id, snapshot, reason, corrected_by, corrected_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(newId('guidelineRevision'), user.org_id, id, JSON.stringify(current), reason, user.id, now),
+    c.env.DB.prepare(
+      `UPDATE sharing_guidelines
+          SET effective_from = ?, effective_to = ?, published_url = ?, provisions = ?, updated_at = ?
+        WHERE id = ? AND org_id = ?`,
+    ).bind(
+      body.effective_from ?? current.effective_from,
+      body.effective_to ?? current.effective_to ?? null,
+      body.published_url ?? current.published_url ?? null,
+      JSON.stringify(body.provisions ?? json(current.provisions as string, [])),
+      now, id, user.org_id,
+    ),
+  ]);
+
+  await audit(c.env.DB, {
+    orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'guideline.corrected',
+    subjectType: 'org', subjectId: user.org_id,
+    meta: { version: current.version, reason, rescores: verdict.rescores, ...usage },
+  });
+
+  // Findings are recomputed from the current text rather than stored, so busting
+  // the cache *is* the re-audit. That is deliberate: a re-score that wrote a
+  // second stored opinion would immediately be able to disagree with the live
+  // one, and there would be no way to tell which was right.
+  await c.env.CACHE.delete(`integrity:${user.org_id}`).catch(() => {});
+
+  return c.json({ id, rescores: verdict.rescores, impact: correctionImpact(usage) });
+});
+
+/**
+ * Withdraw a version published by mistake.
+ *
+ * Refused the moment anything depends on it, and the refusal says what to do
+ * instead. A ministry told only "you cannot delete this" learns nothing and will
+ * publish a near-duplicate version to get around it — which muddles which
+ * document binds which members, and is worse than the mistake it was working
+ * around.
+ */
+integrity.delete('/guidelines/:id', requireLeadership, async (c) => {
+  const user = (await currentUser(c))!;
+  const id = param(c, 'id');
+
+  const current = await first<{ version: string }>(
+    c.env.DB,
+    'SELECT version FROM sharing_guidelines WHERE id = ? AND org_id = ? AND deleted_at IS NULL',
+    id, user.org_id,
+  );
+  if (!current) return c.json({ error: 'That guideline version was not found.' }, 404);
+
+  const usage = await guidelineUsage(c.env, user.org_id, current.version, id);
+  const verdict = canChange('withdrawal', usage);
+  if (!verdict.allowed) return c.json({ error: verdict.reason, usage }, 409);
+
+  await run(
+    c.env.DB,
+    'UPDATE sharing_guidelines SET deleted_at = ?, updated_at = ? WHERE id = ? AND org_id = ?',
+    nowIso(), nowIso(), id, user.org_id,
+  );
+
+  await audit(c.env.DB, {
+    orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'guideline.withdrawn',
+    subjectType: 'org', subjectId: user.org_id, meta: { version: current.version },
+  });
+  await c.env.CACHE.delete(`integrity:${user.org_id}`).catch(() => {});
+
+  return c.json({ ok: true });
+});
+
+/** What a version was corrected from, newest first. */
+integrity.get('/guidelines/:id/revisions', async (c) => {
+  const user = (await currentUser(c))!;
+  const rows = await all<Record<string, unknown>>(
+    c.env.DB,
+    `SELECT r.id, r.reason, r.corrected_at, u.name AS corrected_by, r.snapshot
+       FROM guideline_revisions r LEFT JOIN users u ON u.id = r.corrected_by
+      WHERE r.org_id = ? AND r.guideline_id = ?
+      ORDER BY r.corrected_at DESC`,
+    user.org_id, param(c, 'id'),
+  );
+  return c.json({
+    items: rows.map((r) => ({ ...r, snapshot: json(r.snapshot as string, {}) })),
+  });
+});
+
+/**
+ * How many decisions depend on a version.
+ *
+ * The two halves are asked completely differently, and the reason is worth
+ * knowing before changing either.
+ *
+ * **Applications** carry `guideline_version_id` — a real foreign key to this
+ * row. Exact.
+ *
+ * **Declines do not.** A decline records `denial_guideline_ref`, which is a
+ * *provision code* ("HOSP-1"), not a version label. So the question "which
+ * declines depend on this version" has no join that answers it: the same code
+ * legitimately appears in v2.0 and v2.1, and which version actually governed a
+ * given decline is a computation over the ministry's declared governing rule and
+ * that decline's anchor date — `auditDenials` does it, and it needs the whole
+ * fact set.
+ *
+ * So this counts every decline citing a code this version contains, which
+ * **over-counts** when a code spans versions. That is the deliberate direction:
+ * the only thing this number can block is a withdrawal, and refusing to remove a
+ * document that might be cited is a great deal better than removing one that is.
+ */
+async function guidelineUsage(env: Env, orgId: string, _version: string, id: string) {
+  const guideline = await first<{ provisions: string }>(
+    env.DB,
+    'SELECT provisions FROM sharing_guidelines WHERE id = ? AND org_id = ?',
+    id, orgId,
+  );
+
+  const codes = json<{ code?: string }[]>(guideline?.provisions ?? '[]', [])
+    .map((p) => p.code)
+    .filter((c): c is string => Boolean(c));
+
+  const applications = await first<{ n: number }>(
+    env.DB,
+    `SELECT COUNT(*) AS n FROM member_applications
+      WHERE org_id = ? AND deleted_at IS NULL AND guideline_version_id = ?`,
+    orgId, id,
+  );
+
+  // A version with no provisions cannot be cited by anything, and an empty IN ()
+  // is a syntax error rather than an empty result.
+  const denials = codes.length === 0
+    ? { n: 0 }
+    : await first<{ n: number }>(
+        env.DB,
+        `SELECT COUNT(*) AS n FROM needs
+          WHERE org_id = ? AND deleted_at IS NULL
+            AND denial_guideline_ref IN (${codes.map(() => '?').join(', ')})`,
+        orgId, ...codes,
+      );
+
+  return { denials: denials?.n ?? 0, applications: applications?.n ?? 0 };
+}
 
 export default integrity;

@@ -96,7 +96,7 @@ export async function gatherAccountFacts(
     const guideline = await first<{ version: string }>(
       env.DB,
       `SELECT version FROM sharing_guidelines
-        WHERE org_id = ? AND effective_from <= ?
+        WHERE org_id = ? AND deleted_at IS NULL AND effective_from <= ?
         ORDER BY effective_from DESC LIMIT 1`,
       input.orgId,
       member.joined_at,

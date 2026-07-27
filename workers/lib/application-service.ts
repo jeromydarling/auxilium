@@ -53,7 +53,7 @@ export async function currentGuidelineId(env: Env, orgId: string, now: string): 
   const row = await first<{ id: string }>(
     env.DB,
     `SELECT id FROM sharing_guidelines
-      WHERE org_id = ? AND effective_from <= ?
+      WHERE org_id = ? AND deleted_at IS NULL AND effective_from <= ?
         AND (effective_to IS NULL OR effective_to > ?)
       ORDER BY effective_from DESC LIMIT 1`,
     orgId, now.slice(0, 10), now.slice(0, 10),

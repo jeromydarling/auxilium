@@ -53,7 +53,8 @@ export async function gatherOnboarding(env: Env, orgId: string): Promise<Onboard
   }>(
     env.DB,
     `SELECT
-       (SELECT COUNT(*) FROM sharing_guidelines WHERE org_id = ?1) AS guidelines,
+       (SELECT COUNT(*) FROM sharing_guidelines
+         WHERE org_id = ?1 AND deleted_at IS NULL) AS guidelines,
        (SELECT COUNT(*) FROM members WHERE org_id = ?1 AND deleted_at IS NULL) AS members,
        -- "Team" means anyone beyond the founding account, so a lone owner does
        -- not read as a staffed ministry.

@@ -23,7 +23,8 @@ import marketingRoutes, { serveMinistryDomain } from './marketing';
 import { orgByHost } from './lib/domain-service';
 import { normalizeDomain } from '../src/lib/cms/domains';
 import { renderNotFound } from './marketing/render';
-import { closeAllDuePeriods } from './lib/billing-service';
+import { closeAllDuePeriods, reconcileAllOrgs } from './lib/billing-service';
+import { raiseAlert, resolveAlert } from './lib/alerts';
 import { handleImportBatch } from './queues/imports';
 import { handleSignalBatch } from './queues/signals';
 
@@ -167,6 +168,18 @@ app.get('/api/health', async (c) => {
       ? 'SESSION_SECRET is unset — nobody can sign in. Set it with: wrangler secret put SESSION_SECRET --env production'
       : 'development key (fine locally, never in production)';
 
+  // Alert delivery. Reported because the failure is invisible by construction:
+  // alerts are still raised and stored with no mail provider, so the only
+  // symptom of a misconfiguration is an inbox that stays quiet — which is
+  // exactly what a healthy system looks like.
+  checks.alerts = !c.env.RESEND_API_KEY
+    ? 'not configured — alerts are recorded but nobody is emailed'
+    : !c.env.ALERT_FROM_EMAIL
+      ? 'partial — RESEND_API_KEY is set but ALERT_FROM_EMAIL is not, so nothing can send'
+      : !c.env.ALERT_EMAIL
+        ? 'partial — no ALERT_EMAIL, so operator alerts have no recipient'
+        : 'ok';
+
   const healthy = checks.d1 === 'ok' && !checks.sessions.startsWith('SESSION_SECRET is unset');
 
   return c.json(
@@ -260,6 +273,85 @@ app.onError((error, c) => {
 });
 
 /**
+ * The monthly close, with somebody actually told when it fails.
+ *
+ * This used to count its failures and write them to `console.log`. A ministry's
+ * invoice could fail on the 1st and nobody — not them, not us — would find out
+ * until somebody happened to read a Cloudflare log. That is money failing
+ * silently, in a product whose whole argument is that things which fail silently
+ * are how people get stranded.
+ */
+async function close(env: Env, now: Date): Promise<void> {
+  try {
+    const results = await closeAllDuePeriods(env, now);
+    const invoiced = results.filter((r) => r.status === 'invoiced').length;
+    const failed = results.filter((r) => r.status === 'failed');
+
+    console.log(
+      `[billing] monthly close: ${results.length} organizations, ` +
+        `${invoiced} invoiced, ${failed.length} failed`,
+    );
+
+    if (failed.length === 0) {
+      await resolveAlert(env, 'billing.close_failed:platform');
+      return;
+    }
+
+    await raiseAlert(env, {
+      audience: 'operator',
+      severity: 'critical',
+      kind: 'billing.close_failed',
+      title: `${failed.length} of ${results.length} monthly invoices failed`,
+      body:
+        'The monthly close ran and could not invoice every organization. Until these are ' +
+        'resolved the platform fee for the month has not been billed.',
+      meta: {
+        failed: failed.map((r) => ({ org_id: r.orgId, period: r.period, error: r.error })).slice(0, 20),
+        invoiced,
+        total: results.length,
+      },
+    });
+  } catch (error) {
+    // The close threw before it could report anything. Distinct from "some
+    // invoices failed", because nothing at all was billed.
+    await raiseAlert(env, {
+      audience: 'operator',
+      severity: 'critical',
+      kind: 'billing.close_crashed',
+      title: 'The monthly close did not run',
+      body: 'The close failed before it could invoice anybody. No platform fees were billed.',
+      meta: { error: error instanceof Error ? error.message : 'unknown' },
+    });
+  }
+}
+
+/**
+ * The daily reconciliation.
+ *
+ * Repairs by default. A webhook Stripe never delivered heals within a day
+ * without anybody being told, which is the entire point — see `reconcileAllOrgs`
+ * for why the repair direction is one-way.
+ */
+async function reconcile(env: Env, now: Date): Promise<void> {
+  try {
+    const result = await reconcileAllOrgs(env, now);
+    console.log(
+      `[billing] reconciled ${result.orgs} organizations: ` +
+        `${result.repaired} rows repaired, ${result.unresolved} unresolved`,
+    );
+  } catch (error) {
+    await raiseAlert(env, {
+      audience: 'operator',
+      severity: 'critical',
+      kind: 'billing.reconcile_crashed',
+      title: 'Reconciliation did not run',
+      body: 'Ledger gaps are not being detected or repaired until this is fixed.',
+      meta: { error: error instanceof Error ? error.message : 'unknown' },
+    });
+  }
+}
+
+/**
  * Both queues share one consumer entry, dispatched by name.
  *
  * `MessageBatch<unknown>` is the honest signature — the runtime hands us
@@ -282,16 +374,23 @@ export default {
    * ended, so a retried or double-fired cron cannot double-bill.
    */
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const now = new Date(event.scheduledTime);
+
     ctx.waitUntil(
       (async () => {
-        const now = new Date(event.scheduledTime);
-        const results = await closeAllDuePeriods(env, now);
-        const invoiced = results.filter((r) => r.status === 'invoiced').length;
-        const failed = results.filter((r) => r.status === 'failed').length;
-        console.log(
-          `[billing] monthly close: ${results.length} organizations, ` +
-            `${invoiced} invoiced, ${failed} failed`,
-        );
+        // The daily reconciliation runs on every firing, including the 1st, and
+        // deliberately runs *before* the close: closing a month invoices a
+        // percentage of its settled volume, so a gap still open at that moment
+        // would under-bill and be nobody's fault but ours.
+        await reconcile(env, now);
+
+        // The close, only on the 1st. Cloudflare does not tell a Worker which
+        // cron fired, so this reads the date rather than the schedule — meaning
+        // on the 1st both firings take this path. That is deliberate and safe:
+        // `closePeriod` returns a period past 'open' untouched and Stripe's
+        // idempotency keys are derived from org and period, so the second run
+        // cannot double-bill and quietly retries anything the first one failed.
+        if (now.getUTCDate() === 1) await close(env, now);
       })(),
     );
   },

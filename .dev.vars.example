@@ -44,3 +44,27 @@ STRIPE_WEBHOOK_SECRET=""
 # request origin, which is right for local development and for a single-domain
 # deployment. Set it explicitly if the public hostname differs.
 STRIPE_RETURN_URL=""
+
+# ── Alerts ───────────────────────────────────────────────────────────────────
+# Optional. Absent → alerts are still raised and stored; nobody is emailed, and
+# `/api/health` reports that plainly. It has to say so, because the symptom of
+# getting this wrong is an inbox that stays quiet — which is exactly what a
+# healthy system looks like.
+#
+# Locally you almost certainly want none of these: with no key, `sendEmail`
+# logs the whole message it would have sent, which is easier to read than a
+# real inbox and cannot mail a real ministry by accident.
+
+# Resend API key. One POST, no SDK — the same reasoning as the hand-written
+# Stripe client.
+RESEND_API_KEY=""
+
+# The From address. Must be on a domain verified with the mail provider, or
+# every send fails with a 403 that reads like an auth problem.
+ALERT_FROM_EMAIL=""
+
+# Where operator alerts go — a ledger that will not reconcile, a monthly close
+# that failed. Comma-separated for more than one. Deliberately not sent to
+# ministries: a discrepancy is usually a delivery failure on our side, and a
+# list of charge ids is alarming and unactionable to them in equal measure.
+ALERT_EMAIL=""

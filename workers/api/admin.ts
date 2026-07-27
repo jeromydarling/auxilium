@@ -3,6 +3,7 @@ import { requireUser, requireRole, currentUser, hashPassword, type AppEnv } from
 import { all, first, run, json } from '../lib/db';
 import { param } from '../lib/http';
 import { audit } from '../lib/audit';
+import { ministryAlerts } from '../lib/alerts';
 import { storeDocument, readDocument } from '../lib/storage';
 import { newId } from '../../src/lib/ids';
 import { nowIso } from '../../src/lib/utils';
@@ -87,6 +88,36 @@ admin.delete('/users/:id', requireAdmin, async (c) => {
     orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'user.removed',
     subjectType: 'user', subjectId: id,
   });
+  return c.json({ ok: true });
+});
+
+/**
+ * Live alerts for this ministry.
+ *
+ * `ministryAlerts` never returns operator-audience rows, so a ledger discrepancy
+ * — which is usually our own delivery failure and is unactionable for a ministry
+ * — cannot leak into this list by anybody forgetting a filter at the call site.
+ */
+admin.get('/alerts', async (c) => {
+  const user = (await currentUser(c))!;
+  return c.json({ items: await ministryAlerts(c.env, user.org_id) });
+});
+
+/**
+ * Acknowledge one. Deliberately not the same as resolving it.
+ *
+ * Acknowledging says "I have seen this"; the condition is still true and the
+ * system will keep saying so until it is not. Collapsing the two into one button
+ * is how a dashboard ends up showing green over a live fault.
+ */
+admin.post('/alerts/:id/ack', requireRole('owner', 'admin'), async (c) => {
+  const user = (await currentUser(c))!;
+  await run(
+    c.env.DB,
+    `UPDATE alerts SET acked_at = ?, acked_by = ?, updated_at = ?
+      WHERE id = ? AND org_id = ? AND audience = 'ministry'`,
+    nowIso(), user.id, nowIso(), param(c, 'id'), user.org_id,
+  );
   return c.json({ ok: true });
 });
 

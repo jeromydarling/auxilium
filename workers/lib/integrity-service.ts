@@ -182,7 +182,8 @@ async function loadGuidelines(env: Env, orgId: string): Promise<GuidelineVersion
   }>(
     env.DB,
     `SELECT version, effective_from, effective_to, provisions
-       FROM sharing_guidelines WHERE org_id = ? ORDER BY effective_from DESC`,
+       FROM sharing_guidelines WHERE org_id = ? AND deleted_at IS NULL
+        ORDER BY effective_from DESC`,
     orgId,
   );
 

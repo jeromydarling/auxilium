@@ -196,7 +196,8 @@ async function siteContext(env: Env, org: OrgRow): Promise<SiteContext> {
     all<{ version: string; effective_from: string; published_url: string | null; provisions: string }>(
       env.DB,
       `SELECT version, effective_from, published_url, provisions FROM sharing_guidelines
-        WHERE org_id = ? ORDER BY effective_from DESC LIMIT 5`,
+        WHERE org_id = ? AND deleted_at IS NULL
+        ORDER BY effective_from DESC LIMIT 5`,
       org.id,
     ),
     first<{ published_at: string | null }>(

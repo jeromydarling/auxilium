@@ -115,6 +115,13 @@ const JUSTIFIED = [
   // Session and invite rows, keyed by a secret only the holder has.
   'UPDATE member_accounts SET last_seen_at',
   'UPDATE member_invites SET used_at',
+  // Alerts are keyed by dedupe_key, which embeds the organization and is
+  // globally unique by construction. It has to work that way: a platform-level
+  // alert — the reconciler cannot reach Stripe at all — has no organization,
+  // so an org_id predicate would be wrong rather than merely redundant.
+  'FROM alerts WHERE dedupe_key',
+  'UPDATE alerts SET last_seen_at',
+  'UPDATE alerts SET resolved_at',
 ];
 
 describe('tenant isolation', () => {

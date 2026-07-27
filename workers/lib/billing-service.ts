@@ -10,6 +10,7 @@
 
 import type { Env } from './env';
 import { first, all, run } from './db';
+import { raiseAlert, resolveAlert } from './alerts';
 import { newId } from '../../src/lib/ids';
 import {
   periodKey,
@@ -307,11 +308,15 @@ async function recomputeVolume(env: Env, orgId: string, period: string) {
 }
 
 export interface CloseResult {
+  /** Which ministry. Absent from the success path before, which is why a failure could not name one. */
+  orgId: string;
   period: string;
-  settlement: PeriodSettlement;
+  settlement: PeriodSettlement | null;
   status: string;
   invoiceUrl?: string | null;
   skipped?: string;
+  /** Set only when the close threw for this organization. */
+  error?: string;
 }
 
 /**
@@ -335,6 +340,7 @@ export async function closePeriod(
 
   if (existing && existing.status !== 'open') {
     return {
+      orgId,
       period,
       settlement: settlePeriod(period, existing.settled_volume_cents, existing.refunded_cents),
       status: existing.status,
@@ -345,6 +351,7 @@ export async function closePeriod(
 
   if (!isClosable(period, now)) {
     return {
+      orgId,
       period,
       settlement: settlePeriod(period, existing?.settled_volume_cents ?? 0, existing?.refunded_cents ?? 0),
       status: 'open',
@@ -374,7 +381,7 @@ export async function closePeriod(
   );
 
   if (!stripeConfigured(env)) {
-    return { period, settlement, status: 'closed', skipped: 'stripe not configured' };
+    return { orgId, period, settlement, status: 'closed', skipped: 'stripe not configured' };
   }
 
   const org = await first<{ name: string; billing_email: string | null }>(
@@ -414,7 +421,7 @@ export async function closePeriod(
       period,
     );
 
-    return { period, settlement, status: 'invoiced', invoiceUrl: invoice.hosted_invoice_url };
+    return { orgId, period, settlement, status: 'invoiced', invoiceUrl: invoice.hosted_invoice_url };
   } catch (error) {
     // The period stays closed with its fee recorded. Failing to *send* an
     // invoice must not lose the calculation that produced it.
@@ -429,7 +436,7 @@ export async function closePeriod(
       period,
     );
     console.error(`[billing] invoicing failed for ${orgId} ${period}:`, message);
-    return { period, settlement, status: 'failed', skipped: message };
+    return { orgId, period, settlement, status: 'failed', skipped: message, error: message };
   }
 }
 
@@ -446,9 +453,20 @@ export async function closeAllDuePeriods(env: Env, now: Date): Promise<CloseResu
 
   for (const org of orgs) {
     try {
-      results.push(await closePeriod(env, org.id, target, now));
+      results.push({ ...(await closePeriod(env, org.id, target, now)), orgId: org.id });
     } catch (error) {
+      // Previously this logged and moved on, and the failure never entered the
+      // results array at all — so the caller's "N failed" count was always zero
+      // and the summary line read reassuringly no matter what happened. A
+      // failure that cannot be counted is a failure nobody can be told about.
       console.error(`[billing] close failed for ${org.id} ${target}:`, error);
+      results.push({
+        orgId: org.id,
+        period: target,
+        settlement: null,
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'unknown',
+      });
     }
   }
 
@@ -490,12 +508,32 @@ export function listPeriods(env: Env, orgId: string, limit = 24): Promise<Billin
  * schedule all end the same way: money that settled and a ledger that never
  * heard about it. That looks exactly like a quiet month.
  *
- * **Read-only, deliberately.** It reports the discrepancy; it does not write the
- * missing rows. Two reasons. A reconciler that silently inserts contributions is
- * a second, unaudited path into the ledger — and the ledger is the artefact this
- * whole product asks ministries to stand behind. And a discrepancy is sometimes
- * Stripe's fault, sometimes a refund the ledger netted correctly, and sometimes
- * a genuine bug; a human should decide which before anything is written.
+ * **It repairs, and the direction is the whole design.**
+ *
+ * An earlier version reported and refused to write, on the grounds that a
+ * reconciler inserting contributions is a second, unaudited path into the ledger
+ * a ministry is asked to stand behind. That objection was right about *silent*
+ * repair and wrong about this one. What this writes comes only from Stripe — the
+ * authoritative record of what settled — through `recordSettledContribution`,
+ * the same function the webhook calls, with the same idempotency check and a
+ * full audit row. That is not a second path. It is the same path, polled instead
+ * of pushed.
+ *
+ * The asymmetry is the important part:
+ *
+ *   • **Missing from the ledger → inserted.** Stripe says money settled and we
+ *     have no row. Stripe is right. This is the case an undelivered webhook
+ *     produces, and it is the one that must never survive long enough for a
+ *     human to see it.
+ *   • **Missing from Stripe → never touched.** A contribution the ledger holds
+ *     and Stripe does not is very often correct: a cheque, cash, a bank
+ *     transfer a ministry recorded by hand. Deleting it would destroy a real
+ *     record on the strength of a card processor not having heard of it. It
+ *     raises an alert and waits for a person.
+ *
+ * So a gap caused by our own delivery failure heals within the hour and nobody
+ * is told, and the only thing that reaches a human is the case where the two
+ * sources genuinely disagree about something automation cannot settle.
  */
 export interface Reconciliation {
   period: string;
@@ -507,7 +545,15 @@ export interface Reconciliation {
   missing_from_ledger: string[];
   /** Contribution rows with no matching Stripe charge — the rarer, odder case. */
   missing_from_stripe: string[];
-  /** True when both sides agree exactly. */
+  /**
+   * Charge ids inserted by this run, when repairing.
+   *
+   * Reported even though nobody is emailed about them: a self-healed gap is
+   * still a gap that happened, and the count over time is the only evidence of
+   * how often webhook delivery is failing.
+   */
+  repaired: string[];
+  /** True when both sides agree exactly, after any repair. */
   balanced: boolean;
   status: 'balanced' | 'discrepancy' | 'not_configured' | 'no_account';
 }
@@ -516,13 +562,14 @@ export async function reconcilePeriod(
   env: Env,
   orgId: string,
   period: string,
+  opts: { repair?: boolean; now?: Date } = {},
 ): Promise<Reconciliation> {
   const empty = { count: 0, cents: 0 };
 
   if (!env.STRIPE_SECRET_KEY) {
     return {
       period, stripe: empty, ledger: empty,
-      missing_from_ledger: [], missing_from_stripe: [],
+      missing_from_ledger: [], missing_from_stripe: [], repaired: [],
       balanced: true, status: 'not_configured',
     };
   }
@@ -549,7 +596,7 @@ export async function reconcilePeriod(
     // record contributions it collected by cheque. Nothing to compare against.
     return {
       period, stripe: empty, ledger,
-      missing_from_ledger: [], missing_from_stripe: [],
+      missing_from_ledger: [], missing_from_stripe: [], repaired: [],
       balanced: true, status: 'no_account',
     };
   }
@@ -577,17 +624,158 @@ export async function reconcilePeriod(
 
   const missingFromStripe = [...ledgerIntents].filter((id) => !stripeIntents.has(id));
 
+  // Insert what Stripe says settled and we do not have. Only this direction, and
+  // only through the function the webhook uses.
+  const repaired: string[] = [];
+  if (opts.repair) {
+    const now = opts.now ?? new Date();
+    for (const charge of charges) {
+      if (!charge.payment_intent || ledgerIntents.has(charge.payment_intent)) continue;
+      try {
+        const result = await recordSettledContribution(
+          env,
+          {
+            orgId,
+            amountCents: charge.amount,
+            // Not known from the charge list, and deliberately not guessed. A
+            // fabricated fee would understate what reached medical costs, which
+            // is the one number this product must never quietly get wrong. The
+            // webhook records the real figure if it arrives later; the
+            // idempotency check means that is a no-op rather than a duplicate.
+            processorFeeCents: 0,
+            paymentIntentId: charge.payment_intent,
+            chargeId: charge.id,
+            settledAt: new Date(charge.created * 1000).toISOString(),
+          },
+          now,
+        );
+        if (result.counted) repaired.push(charge.id);
+      } catch (error) {
+        // One bad row must not abandon the rest of the month.
+        console.warn(
+          `[billing] reconcile could not insert ${charge.id}: ` +
+            `${error instanceof Error ? error.message : 'unknown'}`,
+        );
+      }
+    }
+  }
+
+  // Anything repaired is no longer missing. Recomputed rather than assumed, so a
+  // charge that failed to insert stays in the report.
+  const stillMissing = missingFromLedger.filter((id) => !repaired.includes(id));
+  const balanced = stillMissing.length === 0 && missingFromStripe.length === 0;
+
   return {
     period,
     stripe: { count: charges.length, cents: charges.reduce((n, c) => n + c.amount, 0) },
-    ledger,
-    missing_from_ledger: missingFromLedger,
+    ledger: opts.repair
+      ? { count: ledger.count + repaired.length, cents: ledger.cents }
+      : ledger,
+    missing_from_ledger: stillMissing,
     missing_from_stripe: missingFromStripe,
-    balanced: missingFromLedger.length === 0 && missingFromStripe.length === 0,
-    status: missingFromLedger.length === 0 && missingFromStripe.length === 0
-      ? 'balanced'
-      : 'discrepancy',
+    repaired,
+    balanced,
+    status: balanced ? 'balanced' : 'discrepancy',
   };
+}
+
+/**
+ * Reconcile every ministry's recent months, repairing as it goes.
+ *
+ * Two periods, not one: a webhook that fails to arrive on the 31st produces a
+ * gap in a month that is over by the time anybody looks, and a reconciler that
+ * only ever checks the current month would never see it.
+ *
+ * **Almost nothing here reaches a human.** A gap that repairs itself is closed
+ * silently, because a self-healing failure that pages somebody is a failure that
+ * teaches them to ignore the pager. Only two things escalate: a charge Stripe
+ * reports that we could not insert, and a ledger row Stripe has never heard of —
+ * the case automation must not settle, because deleting it could destroy a real
+ * cheque or cash entry somebody typed in by hand.
+ */
+export async function reconcileAllOrgs(env: Env, now: Date): Promise<{
+  orgs: number; repaired: number; unresolved: number;
+}> {
+  if (!env.STRIPE_SECRET_KEY) return { orgs: 0, repaired: 0, unresolved: 0 };
+
+  const orgs = await all<{ org_id: string }>(
+    env.DB,
+    `SELECT DISTINCT org_id FROM billing_accounts
+      WHERE stripe_account_id IS NOT NULL AND charges_enabled = 1`,
+  );
+
+  const periods = [periodKey(now), periodKey(previousMonth(now))];
+  let repaired = 0;
+  let unresolved = 0;
+
+  for (const { org_id: orgId } of orgs) {
+    for (const period of periods) {
+      const key = `billing.ledger_gap:${orgId}:${period}`;
+      try {
+        const result = await reconcilePeriod(env, orgId, period, { repair: true, now });
+        repaired += result.repaired.length;
+
+        if (result.balanced) {
+          // Includes the case where this run is what fixed it.
+          await resolveAlert(env, key);
+          continue;
+        }
+
+        unresolved += result.missing_from_ledger.length + result.missing_from_stripe.length;
+
+        await raiseAlert(env, {
+          orgId,
+          // Operator, not the ministry. A ledger that disagrees with Stripe is
+          // usually a delivery failure on our side, and handing a ministry a
+          // list of charge ids is alarming and unactionable in equal measure.
+          audience: 'operator',
+          severity: 'critical',
+          kind: 'billing.ledger_gap',
+          dedupeKey: key,
+          title: `${period} will not reconcile for ${orgId}`,
+          body:
+            'Automatic repair did not close the gap between Stripe and the ledger. ' +
+            (result.missing_from_stripe.length > 0
+              ? 'There are contributions the ledger holds that Stripe has no record of — these are ' +
+                'never deleted automatically, because they are often a cheque or cash entry made by ' +
+                'hand. Someone has to look.'
+              : 'Charges Stripe reports could not be written to the ledger.'),
+          meta: {
+            org_id: orgId,
+            period,
+            stripe_cents: result.stripe.cents,
+            ledger_cents: result.ledger.cents,
+            repaired_this_run: result.repaired.length,
+            missing_from_ledger: result.missing_from_ledger.slice(0, 20),
+            missing_from_stripe: result.missing_from_stripe.slice(0, 20),
+          },
+        });
+      } catch (error) {
+        // Reaching Stripe at all failed. Platform-level, because it is not this
+        // ministry's problem and one alert is enough for all of them.
+        await raiseAlert(env, {
+          orgId: null,
+          audience: 'operator',
+          severity: 'critical',
+          kind: 'billing.reconcile_failed',
+          title: 'Reconciliation could not run',
+          body: 'The reconciler could not complete. Ledger gaps are not being repaired.',
+          meta: {
+            org_id: orgId,
+            period,
+            error: error instanceof Error ? error.message : 'unknown',
+          },
+        });
+      }
+    }
+  }
+
+  return { orgs: orgs.length, repaired, unresolved };
+}
+
+/** The month before `now`, in UTC. Used to catch a gap at a month boundary. */
+function previousMonth(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15));
 }
 
 export async function claimEvent(

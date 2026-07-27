@@ -3,6 +3,7 @@ import { ArrowRight, Users, Home, HeartHandshake, HandHeart } from 'lucide-react
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PageHeader } from '@/app/AppShell';
 import { SetupChecklist } from '@/features/onboarding/SetupChecklist';
+import { AlertBanner } from '@/features/alerts/AlertBanner';
 import { useNriSummary, useNriTriage } from '@/hooks/nri/useNriSignals';
 import { useNriSessionEngine } from '@/hooks/nri/useNriSessionEngine';
 import { CompassChips } from '@/features/nri/DirectionChip';
@@ -36,6 +37,10 @@ export function DashboardPage() {
         {/* Above everything. A ministry whose product is misbehaving because
             setup is incomplete should learn that before it reads the numbers
             those gaps are distorting. */}
+        {/* Above the checklist: a checklist is about what a ministry has not
+            got round to, an alert is about something that is broken. The other
+            order puts "add your team" above "your invoice failed". */}
+        <AlertBanner />
         <SetupChecklist />
         {nudges.length > 0 && (
           <section>

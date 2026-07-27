@@ -234,8 +234,16 @@ billing.post('/periods/:period/close', requireLeadership, async (c) => {
     action: 'billing.period_closed',
     subjectType: 'billing_period',
     subjectId: period,
-    meta: { status: result.status, fee_cents: result.settlement.platformFeeCents },
+    meta: { status: result.status, fee_cents: result.settlement?.platformFeeCents ?? null },
   });
+
+  // `settlement` is null only on the failure path, which this endpoint cannot
+  // reach — closePeriod throws here rather than returning a failure row, and the
+  // error handler answers. Kept optional rather than asserted so the failure
+  // shape stays representable for the cron, which is the caller that needs it.
+  if (!result.settlement) {
+    return c.json({ error: 'That period could not be closed.', detail: result.error ?? null }, 500);
+  }
 
   return c.json({
     period: result.period,

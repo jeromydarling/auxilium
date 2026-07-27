@@ -29,7 +29,7 @@ demo ministry**. Full Cloudflare walkthrough:
 |---|---|
 | `bun run dev` | Worker + SPA against local D1/R2/KV/Queues |
 | `bun run dev:vite` | Vite HMR, proxying `/api` to `:8787` |
-| `bun run test` | Vitest — 529 tests over domain logic, knowledge, and content integrity |
+| `bun run test` | Vitest — 542 tests over domain logic, knowledge, and content integrity |
 | `bun run typecheck` / `lint` / `build` | The pre-merge gate |
 | `bun run db:reset:local` | Wipe, migrate, reseed |
 | `bun run db:backup:prod` | Dated read-only export of production |
@@ -251,7 +251,7 @@ approved — not from a re-parse that might have drifted.
 
 ## Testing
 
-529 tests over the logic that carries the risk: NRI scoring, integrity and
+542 tests over the logic that carries the risk: NRI scoring, integrity and
 share-ratio rules, claims intake and SLA, repricing, import parsing and
 matching, and money math. All pure, all in plain Node.
 
@@ -302,6 +302,7 @@ Auxilium runs fully with no third-party keys and no paid plan:
 | KV unavailable | Login rate limiting fails **open**. A broken limiter must never lock a ministry out on the day it matters. |
 | `SESSION_SECRET` | Dev uses a fixed key with a loud warning. **Production refuses to issue sessions** — every login 500s, staff and member alike. `/api/health` reports this and goes `degraded`; it used to say `ok` while nobody could sign in, which sent whoever was debugging to look everywhere else first. |
 | `STRIPE_SECRET_KEY` | Billing is **off, not broken**. Connect and invoicing answer "not configured"; the ledger, share ratio, scoring, and claims are untouched. |
+| `RESEND_API_KEY` / `ALERT_FROM_EMAIL` / `ALERT_EMAIL` | Alerts are still **raised and stored**; nobody is emailed. `/api/health` says so, because the symptom of a misconfiguration is a quiet inbox — indistinguishable from nothing being wrong. |
 | `STRIPE_WEBHOOK_SECRET` | The webhook **refuses every request**. An unsigned webhook that writes to the ledger would let anyone fabricate settled contributions, so refusing is the only safe answer. `/api/health` reports this as `partial`, because a key without a webhook secret takes payments and never records them. |
 
 ---
@@ -1332,16 +1333,34 @@ one ministry without rolling back forty, and the gaps that are known rather than
 fixed. Restore has been rehearsed against a scratch database and deliberately
 never against production.
 
-**Reconciliation closes the gap the webhook cannot.** Every guard on the Stripe
-path — signature before meaning, the exactly-once claim, release-on-failure —
-is about an event arriving *twice*. None is about it never arriving, and a
-disabled endpoint or a deploy that 500'd through Stripe's retry schedule both end
-as money that settled against a ledger that never heard about it, which looks
-exactly like a quiet month. `GET /api/billing/periods/:period/reconcile` compares
-the two and **reports rather than repairs**: a reconciler that silently inserts
-contributions would be a second, unaudited path into the ledger a ministry is
-being asked to stand behind. A discrepancy is written to the audit log; a clean
-result is not, because a nightly "balanced" would bury the one that mattered.
+**Reconciliation closes the gap the webhook cannot, and repairs it.** Every
+guard on the Stripe path — signature before meaning, the exactly-once claim,
+release-on-failure — is about an event arriving *twice*. None is about it never
+arriving, and a disabled endpoint or a deploy that 500'd through Stripe's retry
+schedule both end as money that settled against a ledger that never heard about
+it, which looks exactly like a quiet month.
+
+An earlier version reported and refused to write, on the grounds that a
+reconciler inserting contributions is a second, unaudited path into the ledger a
+ministry is asked to stand behind. That objection was right about *silent*
+repair and wrong about this one: what it writes comes only from Stripe — the
+authoritative record of what settled — through `recordSettledContribution`, the
+same function the webhook calls, with the same idempotency check and a full
+audit row. Not a second path; the same path, polled instead of pushed.
+
+**The asymmetry is the design.** Missing from the ledger is *inserted*: Stripe
+says money settled and we have no row, so Stripe is right, and this is exactly
+what an undelivered webhook produces. Missing from Stripe is **never touched** —
+a contribution the ledger holds and Stripe does not is very often a cheque, cash,
+or a bank transfer recorded by hand, and deleting it would destroy a real record
+on the strength of a card processor not having heard of it. That case alerts and
+waits for a person.
+
+So a gap caused by our own delivery failure heals within a day and nobody is
+told. `processor_fee_cents` is recorded as 0 on a repaired row rather than
+guessed — a fabricated fee would understate what reached medical costs, which is
+the one number this product must never quietly get wrong, and the webhook
+arriving late is a no-op rather than a duplicate.
 
 Three limits on the abusable surfaces, all failing **open** so an infrastructure
 blip is never what stops a family joining:
@@ -1359,6 +1378,86 @@ blip is never what stops a family joining:
   one database read on every path. Caching only hits would have left it wide
   open, because the attack consists entirely of misses. Invalidated on publish,
   rename, domain verify, claim, and release.
+
+### Alerts
+
+Before this, the monthly close counted its failures and wrote them to
+`console.log` — and worse, `closeAllDuePeriods` swallowed the exception entirely,
+so a failed close never entered the results array and the "N failed" in that log
+line was **always zero**. The summary read reassuringly no matter what happened.
+A ministry's invoice could fail on the 1st and nobody, us included, would know.
+
+| | |
+|---|---|
+| `workers/lib/alerts.ts` | Raise, dedupe, resolve, and who hears about it |
+| `workers/lib/email.ts` | A hand-written Resend client. Degrades to logging. |
+| `src/features/alerts/AlertBanner.tsx` | The in-app surface, above the checklist |
+| `schema/migrations/0013_alerts_and_guideline_revisions.sql` | The table |
+
+**Stored before sent.** An unconfigured or broken mail provider produces an
+undelivered alert, never a lost one — the same rule the login limiter follows.
+`/api/health` reports the mail configuration, because the symptom of getting it
+wrong is an inbox that stays quiet, which is what a healthy system looks like.
+
+**Deduped by condition, not occurrence.** A month that will not reconcile is
+still broken an hour later; re-raising bumps a counter and sends nothing. The
+bump is an `UPDATE … WHERE dedupe_key = ? AND resolved_at IS NULL` whose row
+count decides whether to insert, rather than select-then-insert, so two
+overlapping cron firings cannot both insert and trip the one-live-alert index.
+
+**Resolved silently.** A "this is fixed now" message about something nobody was
+told about is pure noise.
+
+**Two audiences, and the split is not cosmetic.** A ledger that disagrees with
+Stripe is usually *our* delivery failure, so it goes to `ALERT_EMAIL` and never
+to the ministry — handing them a list of charge ids is alarming and unactionable
+in equal measure. Ministry alerts go to owners and admins only, carry no
+structured detail, and appear in-app above the setup checklist: a checklist is
+about what somebody has not got round to, an alert is about something broken.
+`ministryAlerts` cannot return an operator row, so the boundary does not depend
+on a filter at the call site.
+
+**Acknowledging is not resolving.** "I have seen this" leaves the row visible and
+the condition true. One button that did both is how a dashboard shows green over
+a live fault.
+
+### Correcting a published guideline
+
+`sharing_guidelines` was insert-only, with a unique index on `(org_id, version)`
+and no update or delete path anywhere — so a ministry that published a version
+with a mistyped effective date could not fix it at all, and its only escape was
+publishing a near-duplicate that muddles which document binds which members.
+
+Three things get called "changing the guidelines" and they have opposite
+consequences. `src/lib/integrity/guidelines.ts` holds the rule:
+
+- **A correction** — the record never matched the real published document. The
+  erroneous text should never have governed anything, so declines scored against
+  it are re-audited. Applied in place, which is what keeps the foreign key from
+  `member_applications` and the unique index intact, with the previous row
+  archived to `guideline_revisions` first. A reason is required: a correction
+  with no stated reason is indistinguishable from a quiet rewrite.
+- **A new version** — the rules genuinely changed. Both documents are real and
+  each governed a period; re-scoring old declines against the new one would be
+  falsifying the ministry's own history in the record a regulator would ask for.
+- **A withdrawal** — published by mistake. Soft-deleted, and refused the moment
+  anything depends on it. The refusal names the counts and says *correct it
+  instead*, because a ministry told only "you cannot delete this" will publish a
+  near-duplicate to get around it.
+
+**The re-audit is a cache bust, not a rewrite.** Findings are recomputed from the
+current text rather than stored, so invalidating `integrity:{org}` *is* the
+re-score. A stored second opinion could immediately disagree with the live one
+and there would be no way to tell which was right.
+
+**Counting what depends on a version is asymmetric, and deliberately
+over-counts.** Applications carry `guideline_version_id`, a real foreign key.
+Declines do not — `denial_guideline_ref` is a *provision code*, and which version
+governed a given decline is a computation over the org's governing rule and that
+decline's anchor date. So the count matches every decline citing a code this
+version contains, which over-counts when a code spans versions. The only thing
+that number can block is a withdrawal, and refusing to remove a document that
+might be cited beats removing one that is.
 
 ---
 
@@ -1427,11 +1526,6 @@ requested thing that does not exist.
 `subject_type='household'`. Scoring the household directly is cleaner than the
 current primary-contact proxy, and would let the board show a household as a
 single row with its members underneath.
-
-**A nightly reconciliation.** `GET /api/billing/periods/:period/reconcile`
-exists and nothing calls it on a schedule. The monthly close cron is the natural
-place; the reason it is not wired yet is that nobody has decided who gets told
-when it does not balance.
 
 **Notification delivery.** Signals are computed and displayed but never pushed.
 A daily digest of urgent members, with one-click unsubscribe, is the highest-value
