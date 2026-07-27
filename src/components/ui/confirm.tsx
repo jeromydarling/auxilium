@@ -1,7 +1,15 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { createContext, lazy, Suspense, useCallback, useContext, useMemo, useRef, useState } from 'react';
+
+/**
+ * The dialog is loaded on demand, not with the provider.
+ *
+ * The provider is mounted for the whole staff session but renders nothing until
+ * something asks. A static import would drag the dialog primitive into the
+ * eager chunk, which is the cost the audience split exists to avoid — so the
+ * markup lives in its own module and arrives the first time somebody is asked
+ * to confirm anything.
+ */
+const ConfirmDialog = lazy(() => import('./confirm-dialog'));
 
 /**
  * Asking before something that cannot be walked back.
@@ -67,32 +75,13 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      <Dialog open={request !== null} onOpenChange={(open) => !open && settle(false)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {request?.destructive && (
-                <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden />
-              )}
-              {request?.title}
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">{request?.body}</p>
-          <div className="flex justify-end gap-2">
-            {/* Cancel first in the DOM and visually left, so the keyboard lands
-                on the safe option and a reflexive Enter does nothing. */}
-            <Button variant="ghost" onClick={() => settle(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant={request?.destructive ? 'destructive' : 'default'}
-              onClick={() => settle(true)}
-            >
-              {request?.confirmLabel}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {request && (
+        // No fallback: a confirmation that flashed a spinner before asking the
+        // question would read as the action already having started.
+        <Suspense fallback={null}>
+          <ConfirmDialog request={request} onSettle={settle} />
+        </Suspense>
+      )}
     </ConfirmContext.Provider>
   );
 }

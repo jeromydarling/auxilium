@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, Plus, Trash2 } from 'lucide-react';
 import { api, type FormField, type FormSection } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SectionFields } from './FormFields';
+import { useToast } from '@/components/ui/toast';
+import { useDraft, useUnsavedWarning } from '@/hooks/useDraft';
+import { DraftRecovery } from '@/components/ui/draft-recovery';
 
 /**
  * Editing the application form.
@@ -26,6 +29,7 @@ import { SectionFields } from './FormFields';
  */
 export function FormEditor({ canEdit }: { canEdit: boolean }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const { data } = useQuery({ queryKey: ['applications', 'form'], queryFn: () => api.applications.form() });
 
   const [intro, setIntro] = useState('');
@@ -40,15 +44,48 @@ export function FormEditor({ canEdit }: { canEdit: boolean }) {
     setSections(data.form.sections);
   }, [data]);
 
+  /**
+   * The unsaved-work net, same as the site builder.
+   *
+   * This editor earns it for a reason of its own: a ministry rewriting its
+   * application is deciding what it asks every household that ever joins, and
+   * that is an afternoon's work with a lot of typing in it. Versioned by the
+   * form's own version number rather than a record id — there is one form per
+   * ministry, and the version is what a draft was started against.
+   */
+  const value = useMemo(() => ({ intro, sections }), [intro, sections]);
+  const serverValue = useMemo(
+    () => ({ intro: data?.form.intro ?? '', sections: data?.form.sections ?? [] }),
+    [data],
+  );
+  const dirty = useMemo(
+    () => Boolean(data) && JSON.stringify(value) !== JSON.stringify(serverValue),
+    [data, value, serverValue],
+  );
+
+  const recovery = useDraft({
+    scope: 'apply-form',
+    id: data ? 'current' : null,
+    value,
+    serverValue,
+    serverUpdatedAt: data ? String(data.form.version) : null,
+    dirty,
+  });
+  useUnsavedWarning(dirty);
+
   async function save(publish: boolean) {
     setError(null);
     try {
       const result = await api.applications.saveForm({ intro, sections, publish });
       queryClient.invalidateQueries({ queryKey: ['applications', 'form'] });
+      // Only after the save has landed — clearing first would throw away the
+      // one surviving copy if the request failed.
+      recovery.clear();
       setStatus(publish ? `Published as version ${result.version}.` : 'Saved as a draft.');
       setTimeout(() => setStatus(null), 4000);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'That did not save.');
+      toast.error(e, { onRetry: () => save(publish) });
     }
   }
 
@@ -56,6 +93,17 @@ export function FormEditor({ canEdit }: { canEdit: boolean }) {
 
   return (
     <div className="space-y-4">
+      <DraftRecovery
+        verdict={recovery.verdict}
+        onRecover={() => {
+          const restored = recovery.recover();
+          if (restored) {
+            setIntro(restored.intro);
+            setSections(restored.sections);
+          }
+        }}
+        onDiscard={recovery.discard}
+      />
       <Card>
         <CardHeader className="pb-2"><CardTitle>Your application form</CardTitle></CardHeader>
         <CardContent className="space-y-4">

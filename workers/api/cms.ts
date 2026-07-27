@@ -69,9 +69,13 @@ cms.get('/site', async (c) => {
   const site = await loadSite(c.env, { id: user.org_id }, { published: false });
   if (!site) return c.json({ error: 'That ministry was not found.' }, 404);
 
-  const rows = await all<{ id: string; slug: string; status: string; nav: number; position: number }>(
+  const rows = await all<{
+    id: string; slug: string; status: string; nav: number; position: number; updated_at: string;
+  }>(
     c.env.DB,
-    `SELECT id, slug, status, nav, position FROM cms_pages
+    // `updated_at` is carried so the editor can tell an unsaved local draft
+    // apart from a stale one sitting on top of a colleague's save.
+    `SELECT id, slug, status, nav, position, updated_at FROM cms_pages
       WHERE org_id = ? AND deleted_at IS NULL ORDER BY position, title`,
     user.org_id,
   );
@@ -88,6 +92,7 @@ cms.get('/site', async (c) => {
       id: meta.get(p.slug)?.id ?? null,
       status: meta.get(p.slug)?.status ?? 'draft',
       position: meta.get(p.slug)?.position ?? 0,
+      updated_at: meta.get(p.slug)?.updated_at ?? null,
       resolved: resolveSite(p, site.ctx),
     })),
     nav: siteNav(site.pages),

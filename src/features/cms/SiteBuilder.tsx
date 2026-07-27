@@ -15,6 +15,8 @@ import { newBlock, isLive, liveGap, type Block, type BlockType, type SitePage } 
 import { brandCss } from '@/lib/brand/tokens';
 import { DomainSettings } from './DomainSettings';
 import { useToast } from '@/components/ui/toast';
+import { useDraft, useUnsavedWarning } from '@/hooks/useDraft';
+import { DraftRecovery } from '@/components/ui/draft-recovery';
 
 /**
  * The site builder.
@@ -368,6 +370,25 @@ function PageEditor({
 
   useEffect(() => setDraft({ ...page }), [page]);
 
+  /**
+   * The unsaved-work net.
+   *
+   * Local, not a server autosave, and the reason is one line above in `save`:
+   * saving a published page republishes it. An autosave straight to the server
+   * would push half-written sentences onto a ministry's public website between
+   * keystrokes — which is worse than the problem it solves. This keeps the work
+   * on the device until somebody presses Save.
+   */
+  const recovery = useDraft<SitePage>({
+    scope: 'cms-page',
+    id: page.id,
+    value: draft,
+    serverValue: { ...page } as SitePage,
+    serverUpdatedAt: page.updated_at ?? null,
+    dirty,
+  });
+  useUnsavedWarning(dirty);
+
   const update = (patch: Partial<SitePage>) => setDraft({ ...draft, ...patch });
   const setBlock = (i: number, block: Block) =>
     update({ blocks: draft.blocks.map((b, j) => (j === i ? block : b)) });
@@ -384,11 +405,23 @@ function PageEditor({
         // up believing it has corrected something it has not.
         status: page.status,
       }),
+      // Only on success. Clearing the local copy before the save has landed
+      // would destroy the one surviving copy of the work if the request failed
+      // — which is exactly the moment the net is needed.
+      recovery.clear,
     );
   }
 
   return (
     <div className="space-y-4">
+      <DraftRecovery
+        verdict={recovery.verdict}
+        onRecover={() => {
+          const restored = recovery.recover();
+          if (restored) setDraft(restored);
+        }}
+        onDiscard={recovery.discard}
+      />
       <Card>
         <CardContent className="space-y-3 pt-6">
           <div className="grid gap-3 sm:grid-cols-2">

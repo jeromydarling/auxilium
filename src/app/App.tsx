@@ -5,6 +5,7 @@ import { MemberAuthProvider, useMemberAuth } from './MemberAuthContext';
 import { PortalShell } from './PortalShell';
 import { AppShell } from './AppShell';
 import { LoginPage } from '@/routes/LoginPage';
+import { ConfirmProvider } from '@/components/ui/confirm';
 
 /**
  * Code splitting, by **audience** rather than by route.
@@ -200,7 +201,16 @@ function AppRoutes() {
     );
   }
 
+  // ConfirmProvider is mounted here rather than at the root, and that placement
+  // is load-bearing for the audience split.
+  //
+  // It renders a Radix dialog, and mounting it above the router pulled the
+  // dialog primitive into the eager shared chunk — 98.7KB to 115KB gzipped,
+  // paid by every member opening a bill on a phone and every stranger filling
+  // in an application, for a control neither of them can reach. Confirmations
+  // are a staff concern; this is the staff tree.
   return (
+    <ConfirmProvider>
     <Routes>
       <Route path="/login" element={<Navigate to="/" replace />} />
       <Route element={<AppShell />}>
@@ -228,5 +238,6 @@ function AppRoutes() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </ConfirmProvider>
   );
 }

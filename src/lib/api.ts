@@ -691,6 +691,8 @@ export interface SiteView {
     id: string | null;
     status: string;
     position: number;
+    /** For draft-conflict detection in the editor. */
+    updated_at: string | null;
     resolved: import('./cms/blocks').ResolvedBlock[];
   })[];
   nav: { slug: string; title: string }[];
