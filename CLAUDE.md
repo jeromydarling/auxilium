@@ -1578,7 +1578,10 @@ might be cited beats removing one that is.
 
 **GitHub Actions on push to `main` is the only deploy path.** It builds with
 `--env production`, so the live Worker is `auxilium-app` bound to the
-production D1/R2/KV. Production is `https://auxilium-app.jer-f84.workers.dev`.
+production D1/R2/KV. Production is **`https://auxiliumos.com`** — the
+`auxilium-app.jer-f84.workers.dev` address still answers and is what the deploy
+prints, but `APP_HOST` names the real one, because ministry alert emails and
+the custom-domain CNAME instructions are both generated from it.
 
 Cloudflare Workers Builds was previously also connected to this repository and
 deployed on every push. It has been disconnected, because two systems deploying

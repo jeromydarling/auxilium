@@ -296,7 +296,19 @@ crons = ["0 5 * * *", "0 6 1 * *"]
 
 [env.production.vars]
 APP_ENV = "production"
-APP_HOST = "auxilium-app.jer-f84.workers.dev"
+# The platform's own hostname, and now the real one.
+#
+# This trailed the domain for a while: auxiliumos.com was serving the site
+# while this still said auxilium-app.jer-f84.workers.dev, and two things read
+# it and were quietly wrong. Ministry alert emails linked to the workers.dev
+# address, and every ministry setting up a custom domain was told to point its
+# CNAME there — so a ministry's public site would have depended on a hostname
+# that is an implementation detail rather than the product.
+#
+# The workers.dev address keeps working: a request arriving on it no longer
+# matches this, so it takes the unrecognised-host path, misses, and is served
+# as the platform exactly as before.
+APP_HOST = "auxiliumos.com"
 APP_NAME = "Auxilium"
 NRI_SIGNAL_TTL_SECONDS = "900"
 IMPORT_MAX_ROWS = "10000"
