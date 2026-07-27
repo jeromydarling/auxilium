@@ -144,7 +144,26 @@ export class SentryClient {
       // sitting in a third-party error tracker is not a thing this product
       // could defend, given what the rest of it argues about other people's
       // records.
-      user: this.config.user ? { id: this.config.user.id } : undefined,
+      //
+      // `ip_address: null` states the intent, and **is not sufficient on its
+      // own** — checked against real events rather than assumed. Sentry's
+      // ingest attaches the source address server-side whether or not the
+      // client declares one: a live event sent with this null still arrived
+      // tagged with an IP and a country. (The first check, sent without the
+      // field at all, also carried a city; the two came from different egress
+      // addresses, so that difference is not evidence the null did anything.)
+      //
+      // What actually stops it is a project setting — **Settings → auxilium →
+      // Security & Privacy → Prevent Storing of IP Addresses** — because the
+      // scrubbing happens after the event is received. That is recorded here,
+      // in the code making the promise, rather than only in a runbook: a
+      // guarantee whose enforcement lives in somebody else's web console is one
+      // that silently lapses the day a project is recreated.
+      //
+      // Worth the trouble because a ministry's staff often work from home, so
+      // the address is a home address, and where somebody administering medical
+      // claims happens to be sitting is not needed to fix a stack trace.
+      user: this.config.user ? { id: this.config.user.id, ip_address: null } : undefined,
       request: {
         // Ids stripped. Sentry groups by stack, not URL, so this costs nothing
         // diagnostically and closes the one route by which this integration

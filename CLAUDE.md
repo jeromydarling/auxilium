@@ -1379,6 +1379,19 @@ draft started from, which is what distinguishes unsaved work from stale work
 sitting on top of a colleague's save — the second is offered *with that said*,
 never applied silently. Cleared only after a save lands.
 
+**Two Sentry facts that live outside this repo.** The project is `auxilium` in
+the `cros-llc` organization, one project for both halves, `side` tagged
+`server` or `browser`. Neither of the following can be enforced from code, so
+they are written down where the code makes the promise:
+
+- **Prevent Storing of IP Addresses** must be on, under Settings → auxilium →
+  Security & Privacy. The client sends `user.ip_address: null`, and that is not
+  enough on its own — verified against real events, Sentry attaches the source
+  address at ingest regardless. Staff often work from home, so the address is a
+  home address.
+- **The DSN is a Worker secret**, not a repo value, so a fork does not report
+  into this account. Set with `wrangler secret put SENTRY_DSN --env production`.
+
 **Reporting is hand-written, after measuring.** `@sentry/react` built to 149KB
 gzipped — larger than the whole shared bundle the audience split shrank — and
 kept the session-replay recorder in regardless of tree-shake flags and
