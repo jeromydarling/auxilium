@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, Globe, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { relativeDays } from '@/lib/utils';
@@ -32,6 +33,7 @@ export function DomainSettings() {
   const { data } = useQuery({ queryKey: ['cms', 'domain'], queryFn: () => api.cms.domain() });
 
   const [input, setInput] = useState('');
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastCheck, setLastCheck] = useState<{ found?: string[]; ok: boolean } | null>(null);
@@ -144,7 +146,25 @@ export function DomainSettings() {
                 variant="ghost"
                 className="text-destructive"
                 disabled={busy}
-                onClick={() => guarded(() => api.cms.releaseDomain())}
+                onClick={async () => {
+                  // Asked rather than undone, because the reverse is not a
+                  // restore. Releasing clears the verification token, so
+                  // re-claiming means putting a fresh TXT record in DNS and
+                  // waiting for it to propagate — an "Undo" that takes an hour
+                  // and needs the registrar password is not an undo.
+                  //
+                  // The consequence is named in terms of what a visitor sees,
+                  // which is the part somebody is deciding about.
+                  const ok = await confirm({
+                    title: `Stop serving ${data.domain}?`,
+                    body: data.verified_at
+                      ? `Visitors to ${data.domain} will stop reaching your site. Your ministry stays reachable at ${data.platform_host ?? 'the Auxilium address'}. Setting it up again means adding the DNS record from scratch and waiting for it to spread.`
+                      : `This clears the setup for ${data.domain}. You can start again at any time with a new record.`,
+                    confirmLabel: 'Remove',
+                    destructive: true,
+                  });
+                  if (ok) await guarded(() => api.cms.releaseDomain());
+                }}
               >
                 Remove
               </Button>

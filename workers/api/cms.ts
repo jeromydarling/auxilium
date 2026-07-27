@@ -521,4 +521,35 @@ cms.delete('/pages/:id', requireRole('owner', 'admin'), async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Put a deleted page back.
+ *
+ * The reverse half of the undo bar. It exists because the alternative pattern —
+ * holding the delete for ten seconds and cancelling it if nobody objects — loses
+ * the action entirely if the tab closes in between, and a delete that silently
+ * did not happen is worse than one that did.
+ *
+ * Only ever un-sets `deleted_at`; it cannot resurrect a page from nothing, and
+ * the `org_id` predicate means it cannot reach into another ministry's bin. A
+ * page deleted a month ago restoring cleanly is a feature rather than a
+ * problem — the row was always there.
+ */
+cms.post('/pages/:id/restore', requireRole('owner', 'admin'), async (c) => {
+  const user = (await currentUser(c))!;
+  const result = await run(
+    c.env.DB,
+    'UPDATE cms_pages SET deleted_at = NULL, updated_at = ? WHERE id = ? AND org_id = ? AND deleted_at IS NOT NULL',
+    nowIso(), param(c, 'id'), user.org_id,
+  );
+
+  // Reports rather than pretends. An Undo button that returns ok while having
+  // restored nothing is the single worst outcome available here: the person
+  // believes their page is back and finds out otherwise later.
+  if (result.meta.changes === 0) {
+    return c.json({ error: 'That page could not be put back. It may already have been restored.' }, 404);
+  }
+
+  return c.json({ ok: true });
+});
+
 export default cms;

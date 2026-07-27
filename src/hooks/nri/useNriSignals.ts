@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Compass, type Explanation, type Direction } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 
 /**
  * useNriSignals — the directional signals for one subject.
@@ -14,6 +15,7 @@ import { api, type Compass, type Explanation, type Direction } from '@/lib/api';
  */
 export function useNriSignals(subjectId: string | undefined) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const key = ['nri', 'signals', subjectId];
 
   const { data, isLoading, error } = useQuery({
@@ -32,7 +34,23 @@ export function useNriSignals(subjectId: string | undefined) {
 
   const dismiss = useMutation({
     mutationFn: (direction: Direction) => api.nri.dismiss(subjectId!, direction),
-    onSuccess: invalidate,
+    onSuccess: (_result, direction) => {
+      invalidate();
+      // Dismissing a signal removes a member from the board somebody is
+      // working down, and the row vanishes the moment it is clicked — so a
+      // mis-click looks exactly like the thing having been handled. That is
+      // the worst shape of mistake this product can produce: the whole
+      // argument is that it notices people, and a silent accidental dismiss
+      // is it un-noticing one.
+      //
+      // Cheap to offer, because `restore` already existed as a first-class
+      // action: dismissal always meant "I have seen this", never "never show
+      // me this member again".
+      toast.undo(`Marked as handled.`, async () => {
+        await api.nri.restore(subjectId!, direction);
+        invalidate();
+      });
+    },
   });
 
   const restore = useMutation({

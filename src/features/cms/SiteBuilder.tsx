@@ -14,6 +14,7 @@ import { PageHeader } from '@/app/AppShell';
 import { newBlock, isLive, liveGap, type Block, type BlockType, type SitePage } from '@/lib/cms/blocks';
 import { brandCss } from '@/lib/brand/tokens';
 import { DomainSettings } from './DomainSettings';
+import { useToast } from '@/components/ui/toast';
 
 /**
  * The site builder.
@@ -52,6 +53,7 @@ export function SiteBuilder() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['cms', 'site'], queryFn: () => api.cms.site() });
 
+  const toast = useToast();
   const [active, setActive] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,14 +67,22 @@ export function SiteBuilder() {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['cms', 'site'] });
 
-  async function guarded(fn: () => Promise<unknown>) {
+  // `after` runs only on success and only once the refresh has landed, which
+  // is what lets a caller offer an undo bar for something that actually
+  // happened rather than for something that may have failed.
+  async function guarded(fn: () => Promise<unknown>, after?: () => void) {
     setBusy(true);
     setError(null);
     try {
       await fn();
       await refresh();
+      after?.();
     } catch (e) {
+      // Kept in-panel *and* toasted. The inline message is where somebody
+      // looking at the form expects it; the toast is what they see when the
+      // failure came from a control further up the page.
       setError(e instanceof Error ? e.message : 'That did not work.');
+      toast.error(e);
     } finally {
       setBusy(false);
     }
@@ -207,7 +217,7 @@ function PageList({
   active: string | null;
   busy: boolean;
   onSelect: (slug: string) => void;
-  onAct: (fn: () => Promise<unknown>) => Promise<void>;
+  onAct: (fn: () => Promise<unknown>, after?: () => void) => Promise<void>;
 }) {
   const [adding, setAdding] = useState('');
 
@@ -292,7 +302,7 @@ function Address({
   site, onAct, busy,
 }: {
   site: SiteView;
-  onAct: (fn: () => Promise<unknown>) => Promise<void>;
+  onAct: (fn: () => Promise<unknown>, after?: () => void) => Promise<void>;
   busy: boolean;
 }) {
   const [slug, setSlug] = useState(site.org.slug);
@@ -349,8 +359,10 @@ function PageEditor({
   site: SiteView;
   page: SiteView['pages'][number];
   busy: boolean;
-  onAct: (fn: () => Promise<unknown>) => Promise<void>;
+  onAct: (fn: () => Promise<unknown>, after?: () => void) => Promise<void>;
 }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
   const [draft, setDraft] = useState<SitePage>({ ...page });
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify({ ...page }), [draft, page]);
 
@@ -456,7 +468,23 @@ function PageEditor({
             variant="ghost"
             className="text-destructive"
             disabled={busy}
-            onClick={() => onAct(() => api.cms.deletePage(page.id!))}
+            onClick={() => {
+              const pageId = page.id!;
+              const title = draft.title || 'That page';
+              const restore = async () => {
+                await api.cms.restorePage(pageId);
+                await queryClient.invalidateQueries({ queryKey: ['cms', 'site'] });
+              };
+              // No dialog. The delete is a soft one and the row is still
+              // there, so the honest interaction is to do it and offer it
+              // back — a ministry rearranging its site should not have to
+              // argue with a modal every time. The undo reverses the write
+              // rather than deferring it, so closing the tab mid-countdown
+              // leaves the page deleted, which is what was asked for.
+              onAct(() => api.cms.deletePage(pageId), () =>
+                toast.undo(`${title} was deleted.`, restore),
+              );
+            }}
           >
             <Trash2 className="mr-1.5 h-4 w-4" /> Delete this page
           </Button>

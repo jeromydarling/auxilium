@@ -4,6 +4,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
+import { useConfirm } from '@/components/ui/confirm';
+
+/**
+ * Thrown when somebody presses Cancel in a confirmation.
+ *
+ * A distinct type rather than a boolean return, because the confirm sits
+ * *inside* the mutation — which is what keeps React Query's `isPending` true
+ * while the dialog is open, so the Accept button stays disabled and cannot be
+ * pressed twice. The cost is that a cancel arrives at `onError`, and a
+ * cancellation shown as an error is a red message about something nobody did.
+ */
+class CancelledByUser extends Error {}
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
@@ -23,6 +36,8 @@ export function ApplicationDetailPage() {
   const queryClient = useQueryClient();
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['applications', id],
@@ -37,14 +52,37 @@ export function ApplicationDetailPage() {
   };
 
   const accept = useMutation({
-    mutationFn: () => api.applications.accept(id, note || undefined),
+    mutationFn: async () => {
+      // Accepting writes a household and one member row per person on the
+      // application, in one batch. Undoing that means soft-deleting a family
+      // somebody has since started working with, so it is asked first — and
+      // the count is what makes the question answerable: an applicant who
+      // listed four people and a dialog that says four is a match, and one
+      // that says one is a form that lost the household.
+      const household = data?.application.household ?? [];
+      const people = household.length + 1;
+      const ok = await confirm({
+        title: 'Accept this application?',
+        body: `This creates a household with ${people} ${people === 1 ? 'person' : 'people'} and lets them be shared with. It cannot be undone from here.`,
+        confirmLabel: 'Accept',
+      });
+      if (!ok) throw new CancelledByUser();
+      return api.applications.accept(id, note || undefined);
+    },
     onSuccess: (result) => {
       refresh();
       // Straight to the family that now exists. The point of accepting is that
       // they are in the roster, and showing that immediately is the proof.
       navigate(`/households/${result.household_id}`);
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => {
+      // A cancelled confirmation is not a failure and must not be shown as
+      // one. Without this, pressing Cancel puts a red error on the page for an
+      // action nobody took.
+      if (e instanceof CancelledByUser) return;
+      setError(e.message);
+      toast.error(e);
+    },
   });
 
   const setStatus = useMutation({

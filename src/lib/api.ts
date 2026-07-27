@@ -309,6 +309,7 @@ export const api = {
     createPage: (body: Record<string, unknown>) => post<{ id: string; slug: string }>('/cms/pages', body),
     updatePage: (id: string, body: Record<string, unknown>) => patch<{ ok: true }>(`/cms/pages/${id}`, body),
     deletePage: (id: string) => del<{ ok: true }>(`/cms/pages/${id}`),
+    restorePage: (id: string) => post<{ ok: true }>(`/cms/pages/${id}/restore`, {}),
     reorder: (ids: string[]) => post<{ ok: true }>('/cms/pages/reorder', { ids }),
   },
 };

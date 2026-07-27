@@ -3,6 +3,8 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, Check, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
+import { useConfirm } from '@/components/ui/confirm';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -31,6 +33,8 @@ export function ImportDetailPage() {
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+  const confirm = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ['imports', id],
@@ -71,6 +75,26 @@ export function ImportDetailPage() {
   };
 
   const commit = async () => {
+    // The one genuinely unrecoverable action in the product. Committing writes
+    // real member records, and there is no bulk undo — reversing it means
+    // finding and soft-deleting exactly the rows this import created, which is
+    // not a thing to build a button for.
+    //
+    // The counts are the point of the dialog, not the warning. "Are you sure?"
+    // tests nothing; "128 members created, 12 updated" is a fact somebody can
+    // check against what they expected, and it catches the case where a
+    // mis-mapped column turned an update into 128 new families.
+    const ok = await confirm({
+      title: 'Commit this import?',
+      body: [
+        summary.create > 0 && `${summary.create} new ${summary.create === 1 ? 'member' : 'members'} will be created`,
+        summary.update > 0 && `${summary.update} existing ${summary.update === 1 ? 'member' : 'members'} will be updated`,
+        summary.skip > 0 && `${summary.skip} skipped as duplicates`,
+      ].filter(Boolean).join(', ') + '. This cannot be undone.',
+      confirmLabel: 'Commit',
+    });
+    if (!ok) return;
+
     setCommitting(true);
     setError(null);
     try {
@@ -81,6 +105,7 @@ export function ImportDetailPage() {
       navigate('/members');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'The import could not be committed.');
+      toast.error(err);
     } finally {
       setCommitting(false);
     }

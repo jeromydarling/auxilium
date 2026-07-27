@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { App } from './App';
 import { ToastProvider } from '@/components/ui/toast';
+import { ConfirmProvider } from '@/components/ui/confirm';
 import { ErrorBoundary } from './ErrorBoundary';
 import { reportError } from './observability';
 import { NETWORK_ERROR_STATUS } from '@/lib/errors';
@@ -49,12 +50,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           go with them. */}
       <ErrorBoundary area="root">
         <ToastProvider>
-          {/* The app is mounted at /app; the site root is the marketing site,
-              server-rendered by the Worker. basename keeps every <Link to="/x">
-              working unchanged. */}
-          <BrowserRouter basename="/app">
-            <App />
-          </BrowserRouter>
+          <ConfirmProvider>
+            {/* The app is mounted at /app; the site root is the marketing
+                site, server-rendered by the Worker. basename keeps every
+                <Link to="/x"> working unchanged. */}
+            <BrowserRouter basename="/app">
+              <App />
+            </BrowserRouter>
+          </ConfirmProvider>
         </ToastProvider>
       </ErrorBoundary>
     </QueryClientProvider>
