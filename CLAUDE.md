@@ -1326,6 +1326,80 @@ any organization a reader might be evaluating.
 
 ---
 
+## When something goes wrong
+
+Three layers, and the split between them is about what is actually possible
+rather than how dangerous something feels.
+
+| | |
+|---|---|
+| `src/lib/errors.ts` | What a failure *says*. Pure, tested. |
+| `src/components/ui/toast.tsx` | Saying it. Hand-written. |
+| `src/components/ui/confirm.tsx` | Asking first, for the unrecoverable. |
+| `src/lib/drafts.ts` | Whether a recovered draft is safe to offer. Pure. |
+| `src/hooks/useDraft.ts` | Keeping it, and the unload warning. |
+| `src/app/ErrorBoundary.tsx` | What a crashed page shows instead of white. |
+| `src/app/observability.ts` / `sentry-client.ts` | Reporting. 1.47KB. |
+| `workers/lib/observability.ts` | The Worker half, via `withSentry`. |
+| `src/features/feedback/` | Bug and idea reports, staff only. |
+
+**The wording is product opinion, so it is pure and pinned.** There were three
+fallback sentences — "That did not work.", "That did not save.", and
+`Request failed (500).` — picked by whichever file the author was in. None
+answered the only question that matters at that moment: *was my work saved?*
+Offline says nothing was sent and nothing typed is lost. A 500 admits the write
+may have landed anyway, which is what stops a contribution being entered twice.
+A 403 names who *can* do it. A test forbids "an unexpected error occurred".
+
+**Errors never auto-dismiss.** Success fades after four seconds because the page
+already shows the result. An error does not, ever — every toast library's
+default fades a message while somebody is reading that a member's record did not
+save. Repeats bump a count rather than stacking, the rule the alert table
+follows.
+
+**Undo where a reverse exists; confirm where it does not.** The write happens
+immediately and the bar offers to put it back — deferring the action for ten
+seconds instead loses it if the tab closes, and a delete that silently did not
+happen is worse than one that did. `POST /cms/pages/:id/restore` refuses when it
+changed no rows rather than returning ok: an Undo that reports success having
+restored nothing is the worst outcome available.
+
+**Confirmations are sparing, and each names a count.** "Are you sure?" tests
+nothing — a mis-click is as sure as an intention. "3 new members will be
+created" is checkable against what somebody expected, and catches the mis-mapped
+column that turns an update into 128 new families. Every confirm added makes the
+rest weaker, so the bar is that undo is genuinely impossible: committing an
+import, accepting an application, releasing a domain. `useConfirm` outside a
+provider resolves **false**, so a wiring mistake refuses rather than proceeds.
+
+**Drafts are local, never a server autosave.** Saving a site page republishes
+it, so an autosave would push half-written sentences onto a ministry's public
+website between keystrokes. `baseUpdatedAt` records which server version the
+draft started from, which is what distinguishes unsaved work from stale work
+sitting on top of a colleague's save — the second is offered *with that said*,
+never applied silently. Cleared only after a save lands.
+
+**Reporting is hand-written, after measuring.** `@sentry/react` built to 149KB
+gzipped — larger than the whole shared bundle the audience split shrank — and
+kept the session-replay recorder in regardless of tree-shake flags and
+`integrations: []`. Replay records the screen, and the screen here is somebody's
+medical claim. The replacement is 1.47KB, sends ids and scalars only, strips
+record ids from URLs, and drops query strings entirely because on the members
+page that is a name somebody typed. The DSN is served from `/api/auth/me` rather
+than built in, so it stays out of the repo and only a request that already
+resolved a staff session receives it — which makes "staff only" a property of
+the server rather than a client check somebody forgets.
+
+**Bug reports are staff only.** Members reach their ministry the way they do for
+everything else; an anonymous free-text channel from somebody mid-crisis is a
+records problem we would then hold. One control in the shell on every page,
+because the moment somebody is willing to report is the moment it happened. It
+attaches the page, build, browser, and the errors already buffered — and lists
+exactly what it is sending, ending with what it is not. Almost nothing is
+rejected: the failure mode of a reporting channel is silence, not bad reports.
+
+---
+
 ## Recovery and abuse limits
 
 [`docs/recovery.md`](docs/recovery.md) is the runbook: what is at risk, how to
