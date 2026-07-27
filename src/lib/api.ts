@@ -280,6 +280,12 @@ export const api = {
     gaps: () => get<{ items: KnowledgeGap[] }>('/knowledge/gaps'),
   },
 
+  feedback: {
+    create: (body: import('./feedback/report').ReportDraft) =>
+      post<{ ok: true; id: string; emailed: boolean }>('/feedback', body),
+    mine: () => get<{ items: FeedbackItem[] }>('/feedback'),
+  },
+
   alerts: {
     list: () => get<{ items: MinistryAlert[] }>('/admin/alerts'),
     ack: (id: string) => post<{ ok: true }>(`/admin/alerts/${id}/ack`, {}),
@@ -652,6 +658,14 @@ export interface MinistryAlert {
   last_seen_at: string;
   seen_count: number;
   acked_at: string | null;
+}
+
+export interface FeedbackItem {
+  id: string;
+  kind: 'bug' | 'idea';
+  body: string;
+  route: string | null;
+  created_at: string;
 }
 
 export interface DomainView {

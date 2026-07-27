@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from './AuthContext';
 import { ErrorBoundary } from './ErrorBoundary';
 import { CompassLauncher } from '@/features/nri/CompassDrawer';
+import { ReportButton } from '@/features/feedback/ReportPanel';
 
 /**
  * The application shell.
@@ -114,7 +115,12 @@ export function AppShell() {
         </div>
 
         <div className="border-t p-3">
-          <p className="truncate px-2 text-sm font-medium">{user?.name}</p>
+          {/* Above the identity block rather than buried in Settings. The moment
+              somebody is willing to report something is the moment it happened;
+              by the time they have navigated somewhere to do it, they have
+              talked themselves out of it and lost the detail. */}
+          <ReportButton />
+          <p className="mt-1.5 truncate px-2 text-sm font-medium">{user?.name}</p>
           <p className="truncate px-2 text-xs capitalize text-muted-foreground">{user?.role}</p>
           <Button variant="ghost" size="sm" className="mt-1.5 w-full justify-start" onClick={handleSignOut}>
             <LogOut /> Sign out

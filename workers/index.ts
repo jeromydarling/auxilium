@@ -16,6 +16,7 @@ import claimsRoutes from './api/claims';
 import billingRoutes from './api/billing';
 import migrationRoutes from './api/migration';
 import knowledgeRoutes from './api/knowledge';
+import feedbackRoutes from './api/feedback';
 import memberAuthRoutes from './api/member-auth';
 import applicationRoutes, { publicApplications } from './api/applications';
 import stripeWebhookRoutes from './api/stripe-webhook';
@@ -202,6 +203,7 @@ app.get('/api/health', async (c) => {
   );
 });
 
+app.route('/api/feedback', feedbackRoutes);
 app.route('/api/auth', authRoutes);
 app.route('/api/members', memberRoutes);
 app.route('/api/households', householdRoutes);

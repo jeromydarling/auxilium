@@ -71,7 +71,22 @@ function sourceFiles(dir: string): string[] {
  * people learn to skim.
  */
 function queriesIn(src: string): string[] {
-  return [...src.matchAll(/`([^`]*)`/g)]
+  // All three quote styles, not just backticks.
+  //
+  // This matched only backtick templates until a single-quoted
+  // `UPDATE feedback SET emailed_at = ? WHERE id = ?` walked straight past it.
+  // Short statements in this codebase are written in single quotes precisely
+  // because they fit on one line, so the queries the guard could not see were
+  // disproportionately the simple ones — and a simple `UPDATE ... WHERE id = ?`
+  // with no tenant predicate is exactly the shape this exists to catch.
+  //
+  // A guard with a blind spot is worse than no guard, because the passing run
+  // is read as proof.
+  return [
+    ...src.matchAll(/`([^`]*)`/g),
+    ...src.matchAll(/'([^'\\\n]*)'/g),
+    ...src.matchAll(/"([^"\\\n]*)"/g),
+  ]
     // Normalized, because these statements are wrapped for readability and a
     // fragment match against raw source would depend on where the newlines fell.
     .map((m) => m[1].replace(/\s+/g, ' ').trim())
@@ -122,6 +137,56 @@ const JUSTIFIED = [
   'FROM alerts WHERE dedupe_key',
   'UPDATE alerts SET last_seen_at',
   'UPDATE alerts SET resolved_at',
+
+  // ── Surfaced when this guard was widened past backtick templates ──────────
+  //
+  // Every one below was audited by hand at that point, and each is the first
+  // kind above: the row was located by a query carrying `org_id` or
+  // `member_id` a few lines earlier, and the id being written is that read's
+  // own result. A wrong id here could only come from a wrong read.
+  //
+  // They are listed individually rather than pattern-exempted so that adding a
+  // nineteenth is a line somebody has to write and defend in review.
+
+  // The signed-in account acting on itself. `id` is the session's own user,
+  // never a value from the request.
+  'UPDATE users SET last_seen_at',
+  'SELECT password_hash, password_salt FROM users WHERE id = ?',
+  'UPDATE users SET password_hash',
+  'SELECT password_hash, password_salt FROM member_accounts WHERE id = ?',
+  'UPDATE member_accounts SET password_hash',
+
+  // Portal account writes, after `SELECT ... JOIN members ... WHERE m.org_id = ?`
+  // established that the account belongs to this ministry.
+  'UPDATE member_accounts SET email',
+  "UPDATE member_accounts SET status = 'suspended'",
+
+  // Read against a claim already fetched WHERE id = ? AND org_id = ? (staff) or
+  // scoped to the member's own claims (portal). The need id is that row's.
+  'SELECT joined_at FROM members WHERE id = ?',
+  "SELECT paid_at FROM disbursements WHERE need_id = ?",
+
+  // Marking our own just-inserted row as emailed. The id was generated in the
+  // same handler and has not been anywhere.
+  'UPDATE alerts SET emailed_at',
+  'UPDATE feedback SET emailed_at',
+
+  // Import rows, marked committed inside the batch that writes their member.
+  // Located by a read scoped to the import, which is scoped to the org.
+  'UPDATE import_rows SET committed',
+
+  // Sessions, keyed by a hash of a secret only the holder has — the same
+  // argument as the member invite rows above. An org predicate would add
+  // nothing: possession of the token *is* the authorization, and sign-out must
+  // work before any org is known.
+  'DELETE FROM sessions WHERE token_hash',
+  'DELETE FROM member_sessions WHERE token_hash',
+
+  // Deliberately cross-tenant. This counts recent applications from one source
+  // address to rate-limit the public form, and an address is not a tenant —
+  // scoping it per org would let the same sender hit every ministry in turn,
+  // which is the abuse it exists to slow.
+  'FROM member_applications WHERE source_ip_hash',
 ];
 
 describe('tenant isolation', () => {

@@ -43,6 +43,7 @@ const PREFIXES = {
   healthForm: 'hdf',
   alert: 'alrt',
   guidelineRevision: 'grev',
+  feedback: 'fb',
 } as const;
 
 export type IdKind = keyof typeof PREFIXES;
