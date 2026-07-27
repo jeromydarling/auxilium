@@ -14,6 +14,12 @@ export interface Env {
   IMPORT_QUEUE: Queue<ImportJob>;
   SIGNAL_QUEUE: Queue<SignalJob>;
   ASSETS: Fetcher;
+  /**
+   * Cloudflare Email Sending. Optional at the type level like every other
+   * degradable dependency — an environment without the binding still raises and
+   * stores alerts, it just cannot deliver them.
+   */
+  EMAIL?: SendEmail;
 
   // Non-secret vars
   APP_ENV: 'development' | 'preview' | 'production';
@@ -32,10 +38,14 @@ export interface Env {
    *
    * All optional. With none of them set, alerts are still raised and stored —
    * they simply are not delivered, and `/api/health` says so. An unconfigured
-   * mail provider must mean an undelivered alert, never a lost one.
+   * mail path must mean an undelivered alert, never a lost one.
    */
-  RESEND_API_KEY?: string;
-  /** The From address. Must be on a domain verified with the mail provider. */
+  /**
+   * The From address. Must be on a domain in this Cloudflare account: a
+   * routing domain at minimum, and an onboarded *sending* domain before mail
+   * can reach an address that has not been verified in the account — which is
+   * every ministry owner. See workers/lib/email.ts.
+   */
   ALERT_FROM_EMAIL?: string;
   /** Where operator alerts go. Comma-separated for more than one. */
   ALERT_EMAIL?: string;

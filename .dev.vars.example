@@ -51,16 +51,33 @@ STRIPE_RETURN_URL=""
 # getting this wrong is an inbox that stays quiet — which is exactly what a
 # healthy system looks like.
 #
-# Locally you almost certainly want none of these: with no key, `sendEmail`
-# logs the whole message it would have sent, which is easier to read than a
-# real inbox and cannot mail a real ministry by accident.
+# Delivery is Cloudflare Email Sending via the `EMAIL` binding in
+# wrangler.toml — no API key, no SDK, no vendor that can be down separately
+# from the Worker. There is nothing to put here for the transport itself.
+#
+# Locally you almost certainly want neither of these: with no From address,
+# `sendEmail` logs the whole message it would have sent, which is easier to
+# read than a real inbox and cannot mail a real ministry by accident.
 
-# Resend API key. One POST, no SDK — the same reasoning as the hand-written
-# Stripe client.
-RESEND_API_KEY=""
-
-# The From address. Must be on a domain verified with the mail provider, or
-# every send fails with a 403 that reads like an auth problem.
+# The From address, and the switch that turns delivery on at all — the binding
+# alone sends nothing.
+#
+# Two account-level facts decide whether mail actually arrives, and neither is
+# visible from inside the Worker:
+#
+#   • The domain must be in this Cloudflare account. You can only send from a
+#     domain you have onboarded or that is set up for Email Routing.
+#   • Until a *sending* domain is onboarded, a Worker can only reach addresses
+#     verified as destinations in the account. That is free, needs only Email
+#     Routing, and is enough for operator alerts — they go to one address we
+#     control. It is not enough for ministry alerts, which go to whatever
+#     address an owner signed up with. Those need the onboarded sending domain
+#     (Email Sending is on the Workers Paid plan). Until then they fail, loudly:
+#     the error is logged and `emailed_at` stays unset on the alert row.
+#
+# One more, so nobody debugs a fault that does not exist: mail sent from a
+# Worker shows in the Email Routing summary as "dropped" even when it was
+# delivered. Read the Email Sending metrics instead.
 ALERT_FROM_EMAIL=""
 
 # Where operator alerts go — a ledger that will not reconcile, a monthly close

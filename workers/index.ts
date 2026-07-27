@@ -172,10 +172,16 @@ app.get('/api/health', async (c) => {
   // alerts are still raised and stored with no mail provider, so the only
   // symptom of a misconfiguration is an inbox that stays quiet — which is
   // exactly what a healthy system looks like.
-  checks.alerts = !c.env.RESEND_API_KEY
+  //
+  // Note that "ok" here means the Worker can attempt a send, not that mail will
+  // arrive. Cloudflare Email Sending only reaches addresses verified in the
+  // account until a sending domain is onboarded, and that is an account-level
+  // step no binding can report on. Operator alerts go to one address we control
+  // and work either way; ministry alerts need the onboarded domain.
+  checks.alerts = !c.env.EMAIL
     ? 'not configured — alerts are recorded but nobody is emailed'
     : !c.env.ALERT_FROM_EMAIL
-      ? 'partial — RESEND_API_KEY is set but ALERT_FROM_EMAIL is not, so nothing can send'
+      ? 'partial — the EMAIL binding is present but ALERT_FROM_EMAIL is not, so nothing can send'
       : !c.env.ALERT_EMAIL
         ? 'partial — no ALERT_EMAIL, so operator alerts have no recipient'
         : 'ok';

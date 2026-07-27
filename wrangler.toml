@@ -135,6 +135,29 @@ id = "0496371cc04f4a6d88a5a775adc43a4d"
 binding = "CONFIG"
 id = "428a86cb58f8456aba0eaf01ce7b7605"
 
+# ── Email (operational alerts) ───────────────────────────────────────────────
+# Cloudflare Email Sending, not a third-party mail API: no key, no SDK, no
+# vendor that can be down separately from the Worker.
+#
+# The binding alone sends nothing. `ALERT_FROM_EMAIL` is a secret rather than a
+# var here — not because a From address is sensitive, but because setting it is
+# the switch that turns delivery on, and it should be turned on per environment
+# by somebody who means to. Preview deliberately does not have it: preview
+# shares the *dev* database, whose demo ministries have fabricated staff
+# addresses, and a preview deploy that can mail them is a preview deploy that
+# will.
+#
+# Deliberately no `destination_address` / `allowed_destination_addresses`
+# restriction: ministry alerts go to whichever owner or admin a ministry
+# registered, so an allowlist in this file could only ever be wrong.
+#
+# `remote = true` is not set, so `wrangler dev` simulates the binding and writes
+# the message to a temp file instead of mailing anybody. That is what you want
+# locally — see workers/lib/email.ts, which logs the whole message when there is
+# no From address at all.
+[[send_email]]
+name = "EMAIL"
+
 # ── Queues ───────────────────────────────────────────────────────────────────
 # Queues cannot be created through the API token used by `wrangler d1/kv/r2
 # create` flows in every account tier — if `wrangler queues create` fails, make
@@ -216,6 +239,13 @@ id = "0496371cc04f4a6d88a5a775adc43a4d"
 binding = "CONFIG"
 id = "428a86cb58f8456aba0eaf01ce7b7605"
 
+# Bound so the code path is identical to production, and left unable to send:
+# no ALERT_FROM_EMAIL secret in preview means `emailConfigured` is false, alerts
+# are recorded and logged, and the demo ministries' fabricated staff addresses
+# are never mailed.
+[[env.preview.send_email]]
+name = "EMAIL"
+
 [[env.preview.queues.producers]]
 binding = "IMPORT_QUEUE"
 queue = "auxilium-imports"
@@ -288,6 +318,9 @@ id = "97b32f34cc414900b0243b5c4ffd1415"
 [[env.production.kv_namespaces]]
 binding = "CONFIG"
 id = "fbccaa55ec0546db851a26822e5cf637"
+
+[[env.production.send_email]]
+name = "EMAIL"
 
 # Production gets its OWN queues, like it gets its own D1, R2, and KV.
 #

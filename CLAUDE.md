@@ -302,7 +302,8 @@ Auxilium runs fully with no third-party keys and no paid plan:
 | KV unavailable | Login rate limiting fails **open**. A broken limiter must never lock a ministry out on the day it matters. |
 | `SESSION_SECRET` | Dev uses a fixed key with a loud warning. **Production refuses to issue sessions** — every login 500s, staff and member alike. `/api/health` reports this and goes `degraded`; it used to say `ok` while nobody could sign in, which sent whoever was debugging to look everywhere else first. |
 | `STRIPE_SECRET_KEY` | Billing is **off, not broken**. Connect and invoicing answer "not configured"; the ledger, share ratio, scoring, and claims are untouched. |
-| `RESEND_API_KEY` / `ALERT_FROM_EMAIL` / `ALERT_EMAIL` | Alerts are still **raised and stored**; nobody is emailed. `/api/health` says so, because the symptom of a misconfiguration is a quiet inbox — indistinguishable from nothing being wrong. |
+| `ALERT_FROM_EMAIL` / `ALERT_EMAIL` (or the `EMAIL` binding) | Alerts are still **raised and stored**; nobody is emailed. `/api/health` says so, because the symptom of a misconfiguration is a quiet inbox — indistinguishable from nothing being wrong. |
+| An onboarded Cloudflare **sending domain** | Operator alerts still arrive: with only Email Routing, a Worker may mail addresses verified in the account, and operator alerts go to one address we control. **Ministry alerts fail** — an owner's own address is not a verified destination. They fail loudly rather than vanishing: the error is logged and `emailed_at` stays unset on the row. |
 | `STRIPE_WEBHOOK_SECRET` | The webhook **refuses every request**. An unsigned webhook that writes to the ledger would let anyone fabricate settled contributions, so refusing is the only safe answer. `/api/health` reports this as `partial`, because a key without a webhook secret takes payments and never records them. |
 
 ---
@@ -1390,7 +1391,7 @@ A ministry's invoice could fail on the 1st and nobody, us included, would know.
 | | |
 |---|---|
 | `workers/lib/alerts.ts` | Raise, dedupe, resolve, and who hears about it |
-| `workers/lib/email.ts` | A hand-written Resend client. Degrades to logging. |
+| `workers/lib/email.ts` | Cloudflare Email Sending. Degrades to logging. |
 | `src/features/alerts/AlertBanner.tsx` | The in-app surface, above the checklist |
 | `schema/migrations/0013_alerts_and_guideline_revisions.sql` | The table |
 
@@ -1398,6 +1399,31 @@ A ministry's invoice could fail on the 1st and nobody, us included, would know.
 undelivered alert, never a lost one — the same rule the login limiter follows.
 `/api/health` reports the mail configuration, because the symptom of getting it
 wrong is an inbox that stays quiet, which is what a healthy system looks like.
+
+**Delivery is Cloudflare's own Email Sending binding**, not a third-party mail
+API — `env.EMAIL.send()`, no key, no SDK, no vendor that can be down separately
+from the Worker. Two account-level facts about it are invisible from inside the
+Worker and so are written down instead:
+
+- Until a **sending domain is onboarded**, a Worker may only mail addresses
+  verified as destinations in the account. That is free and needs nothing but
+  Email Routing, and it is exactly enough for operator alerts, which go to one
+  address we control. Ministry alerts go to whatever address an owner signed up
+  with, so they need the onboarded domain. `/api/health` says `ok` once the
+  binding and the From address are present, which means *the Worker can attempt
+  a send* — not that mail will arrive. No binding can report on an account-level
+  step.
+- Mail sent from a Worker appears in the **Email Routing summary as "dropped"
+  even when it was delivered**. That is a reporting quirk of Routing, not a
+  delivery failure; the Email Sending metrics are the ones to read. It is in the
+  source comment as well as here, because somebody will otherwise spend an
+  afternoon chasing a fault that does not exist.
+
+The timeout is a race rather than a cancellation — the binding has no abort
+signal — so a slow send is reported `failed` while it may still land. That
+asymmetry is the right way round: the alert row is already written, so the worst
+case is a delivered alert recorded as undelivered. Marking a send that never
+happened is the error that would let a real fault go unnoticed.
 
 **Deduped by condition, not occurrence.** A month that will not reconcile is
 still broken an hour later; re-raising bumps a counter and sends nothing. The
