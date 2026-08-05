@@ -587,80 +587,327 @@ const howItWorks: MarketingPage = {
   title: 'How Auxilium works — Auxilium',
   h1: 'How Auxilium works',
   description:
-    'Import your roster, record contributions and disbursements, publish your guidelines, and ' +
-    'the integrity and NRI layers compute themselves.',
+    'Four things go in: your roster, your ledger, your guidelines, your claims. The share ratio, ' +
+    'the escalation desk, the denial audit and the triage board are computed from them. Here is ' +
+    'each screen, and what the first week actually looks like.',
   priority: 0.7,
-  updated: '2026-07-25',
+  updated: '2026-07-27',
   blocks: [
     {
       type: 'hero',
-      heading: 'How Auxilium works',
-      subheading: 'Four things you put in. Everything else is computed from them.',
+      kicker: 'How it works',
+      heading: 'Four things in. Everything else is computed.',
+      subheading:
+        'You supply the roster you already have, the money in and out, the guidelines you already ' +
+        'publish, and the claims as they arrive. Nothing else is data entry — the ratio, the ' +
+        'findings, the escalations and the board all derive from those four.',
       cta: { label: 'Open the demo', href: '/app/login' },
+      secondaryCta: { label: 'See every feature', href: '/features' },
+      mockup: 'import',
+      trust: [
+        'No card to open the demo',
+        'Import a spreadsheet, export it back out',
+        'Nothing is written until you approve it',
+      ],
     },
+
     {
-      type: 'featureList',
-      heading: 'What you put in',
-      features: [
+      type: 'steps',
+      heading: 'What the first week actually looks like',
+      intro:
+        'No implementation project and no configuration phase. Each step is useful on its own, ' +
+        'so stopping after any of them still leaves you better off than the morning before.',
+      steps: [
         {
-          title: '1. Your roster',
+          title: 'Day one — import the roster',
           body:
-            'Upload the spreadsheet you already have. Auxilium infers which column is which, ' +
-            'validates every row, finds duplicates against existing members, and shows you a full ' +
-            'preview. Nothing is written until you approve it. A blank cell means "not provided", ' +
-            'never "delete what you know".',
+            'Upload the export you already have, however messy. Column names are inferred from ' +
+            'an alias table, so "Mbr #" and "Last, First" land where they should. Every row is ' +
+            'validated and duplicates are matched against people already on file. The triage ' +
+            'board is populated the moment you commit — most ministries find somebody they had ' +
+            'lost track of that same afternoon.',
         },
         {
-          title: '2. Your ledger',
+          title: 'Week one — record the ledger',
           body:
-            'Contributions in, disbursements out, each categorized. This is what makes the share ' +
-            'ratio possible, and it is the difference between believing you are sharing most of ' +
-            'what you collect and being able to show it.',
+            'Contributions in, disbursements out, each categorised. Connect Stripe and settled ' +
+            'contributions record themselves; anything paid by cheque or bank transfer is entered ' +
+            'once. This is the step that makes the share ratio a fact rather than a belief.',
         },
         {
-          title: '3. Your guidelines',
+          title: 'Week one — publish the guidelines',
           body:
-            'Your sharing guidelines, versioned and dated, with each provision declaring which ' +
-            'denial reasons it authorizes. Roughly an afternoon of work, once.',
+            'Your sharing guidelines, versioned and dated, each provision declaring which denial ' +
+            'reasons it authorises. Roughly an afternoon of typing, once. From then on every ' +
+            'decline is checked against the document that was actually in force on the day.',
         },
         {
-          title: '4. Your claims',
+          title: 'From then on — work the desk',
           body:
-            'Submitted with the fields a reviewer actually needs. Auxilium refuses a claim that ' +
-            'cannot be worked — missing procedure code, invalid provider NPI, no itemized bill — ' +
-            'rather than accepting it into a queue where it will stall for months.',
+            'Claims arrive with the fields a reviewer needs or they do not arrive at all. Each ' +
+            'gets a due date at submission. The escalation desk shows what is late and what ' +
+            'nobody has opened, and the integrity report recomputes itself as the ledger moves.',
         },
       ],
+    },
+
+    {
+      type: 'split',
+      eyebrow: 'The ledger',
+      heading: 'One number you will be asked for, and can answer',
+      paragraphs: [
+        'Contributions and disbursements sit on one timeline, and every disbursement carries a ' +
+        'category that decides which side of the ratio it lands on. That is all the share ratio ' +
+        'is: of every dollar members contributed, how many cents reached their medical costs.',
+
+        `It is measured against the ACA medical-loss floor of ${ACA_INDIVIDUAL} — which health ` +
+        'care sharing ministries are not held to. That is precisely why it is worth measuring ' +
+        'against: clearing a bar you are not held to says something no marketing page can.',
+      ],
+      bullets: [
+        'Related-party payments are broken out separately, because that is where diversion hides',
+        'A month with money in and nothing out is the loudest signal the system produces',
+        'Publish it on your own site, opt-in, with no member data in it',
+      ],
+      mockup: 'integrity',
+      cta: { label: 'How the integrity layer scores', href: '/claims-integrity' },
+    },
+
+    {
+      type: 'prose',
+      heading: 'Rules that can check themselves',
+      paragraphs: [
+        'A guideline version is not a PDF in a folder. Each provision declares the denial reason ' +
+        'codes it actually authorises, which is what turns "we followed our guidelines" from a ' +
+        'claim into something checkable.',
+
+        'That one field is load-bearing, because the signature pattern of this category is ' +
+        'marketing "covered from day one" and then declining on precisely that basis.',
+      ],
+    },
+    {
+      type: 'table',
+      heading: 'What a provision declares',
+      intro:
+        'Illustrative rows in the shape the guideline table actually stores. The third column is ' +
+        'the one that does the work: a decline citing a provision that does not authorise the ' +
+        'stated reason is a finding, the week it happens rather than in a deposition.',
+      columns: [
+        { label: 'Provision' },
+        { label: 'What it says' },
+        { label: 'Denial reasons it authorises' },
+      ],
+      rows: [
+        ['3.1', 'Twelve-month waiting period for pre-existing conditions', 'pre_existing, waiting_period'],
+        ['3.4', 'Conditions treated in the 24 months before joining are pre-existing', 'pre_existing'],
+        ['5.2', 'Annual sharing limit per member', 'annual_limit_reached'],
+        ['7.1', 'Elective and cosmetic procedures are not shared', 'not_eligible_service'],
+        ['9.3', 'Bills must be submitted within six months of the date of service', 'late_submission'],
+      ],
+      footnote:
+        'A decline recorded against provision 5.2 for a pre-existing condition does not hold up, ' +
+        'and Auxilium says so at the moment it is recorded — not blocking it, because blocking ' +
+        'pushes staff to pick whatever provision the form accepts, which destroys the record ' +
+        'rather than correcting it.',
     },
     {
       type: 'prose',
-      heading: 'What comes out',
       paragraphs: [
-        'A share ratio benchmarked against a public standard. A list of denials that need ' +
-        're-opening, with the amount at stake. An escalation desk of every claim past its ' +
-        'commitment and every claim nobody has opened. A triage board of members who need ' +
-        'attention, most pressing first. And an audit trail that answers "why did this happen" ' +
-        'months later.',
+        'Which version binds a member is a decision the ministry declares, not one we assume: ' +
+        'enrolment, date of service, submission, or when the bills were received. All four are ' +
+        'in real use, and scoring the naive version would raise a serious finding against a ' +
+        'ministry every time it followed its own published policy correctly.',
+
+        'Correcting a version that never matched the real document re-checks the decisions made ' +
+        'under it, with the previous text kept on file. Publishing a genuinely new version does ' +
+        'not — both documents are real, and each governed a period. A missing anchor date is ' +
+        'never a finding at all: cannot-tell must not become an accusation built out of a gap in ' +
+        'the data.',
       ],
+    },
+
+    {
+      type: 'split',
+      eyebrow: 'The claims desk',
+      heading: 'A claim that cannot quietly stall',
+      paragraphs: [
+        'Intake refuses what cannot be worked — a missing procedure code, a provider NPI that ' +
+        'fails its check digit, no itemised bill — rather than accepting it into a queue where ' +
+        'it will sit for months looking like progress.',
+
+        'Every accepted claim gets a due date from the turnaround your ministry chose. The clock ' +
+        'pauses while you are genuinely waiting on the member, and a claim nobody has opened ' +
+        'escalates before its deadline: the member cannot tell "being worked" from "lost", and ' +
+        'assumes the first until it is too late to assume anything.',
+      ],
+      bullets: [
+        'Members see the same tracker your staff do, worded from the same computation',
+        'Reference-based repricing against Medicare rates, with the basis recorded',
+        'Eligibility answered before the procedure, never promissory',
+      ],
+      mockup: 'claims',
+      cta: { label: 'What members are owed', href: '/claims-integrity' },
+    },
+
+    {
+      type: 'split',
+      eyebrow: 'The board',
+      heading: 'Who to call this morning, and why',
+      flip: true,
+      paragraphs: [
+        'Every member carries four readings — care, case weight, household complexity, and ' +
+        'whether you are still in touch. A score is the sum of the weights of every rule that ' +
+        'matched, and the reasons are always shown beside the number.',
+
+        'There is no model and no learned coefficient anywhere in it. A staff member who ' +
+        'distrusts a score can add it up by hand and either agree or point at the rule they ' +
+        'disagree with — and a system nobody can argue with does not get trusted with pastoral ' +
+        'care.',
+      ],
+      bullets: [
+        'Ties break toward the hurting person, not the expensive case',
+        'Equal scores are still a total order, so nobody loses their place in the queue',
+        'The row shows its basis — "4 reasons · last contact 31 days ago"',
+      ],
+      mockup: 'triage',
+      cta: { label: 'How the scoring works', href: '/narrative-relational-intelligence' },
     },
     {
-      type: 'prose',
-      heading: 'Built on Cloudflare',
-      paragraphs: [
-        'Auxilium runs on Cloudflare Workers with D1 for records, R2 for documents, and queues ' +
-        'for background work. Practically, that means it is fast everywhere, there are no servers ' +
-        'to maintain, and your data lives in one auditable place rather than across four ' +
-        'spreadsheets and an inbox.',
+      type: 'mockup',
+      kind: 'compass',
+      heading: 'And what one member looks like up close',
+      caption:
+        'Four readings, each with the rules that produced it and the weight each rule carried. ' +
+        'A member can carry several at once, and that is the point: high case weight with low ' +
+        'care is a billing problem, and high on both is a family in crisis.',
+    },
+
+    {
+      type: 'table',
+      heading: 'What is true by when',
+      intro:
+        'Assuming an afternoon of attention on the first day and an hour or two a week after ' +
+        'that. Nothing here waits on us.',
+      columns: [{ label: 'By' }, { label: 'What you have' }],
+      rows: [
+        [
+          'The first afternoon',
+          'Your whole roster in, duplicates flagged, and a triage board ranking who needs contact first.',
+        ],
+        [
+          'The first week',
+          'A share ratio computed from your own ledger, and a denial audit over the declines you have already recorded.',
+        ],
+        [
+          'The first month',
+          'Every open claim on a clock, an escalation desk of what is late, and a public page you can point a member or a journalist at.',
+        ],
+        [
+          'The first quarter',
+          'A trend rather than a snapshot: whether the ministry is getting better at follow-up, and whether the ratio is drifting.',
+        ],
+      ],
+      footnote:
+        'The order matters. The roster is useful before the ledger exists, and the ledger is ' +
+        'useful before the guidelines are typed — so there is no point at which you have done ' +
+        'half the work and have nothing to show for it.',
+    },
+
+    {
+      type: 'faq',
+      heading: 'The questions ministries actually ask',
+      items: [
+        {
+          question: 'Our spreadsheet is a mess. Does that matter?',
+          answer:
+            'No, and it is the case the importer was built for. Mixed date formats, embedded ' +
+            'newlines, a byte-order mark, ragged rows, the same family exported twice, "Mbr #" ' +
+            'as a column name. Only a row with no name at all is refused — everything else ' +
+            'imports with a warning attached, because refusing a family over a typo\u2019d postcode ' +
+            'is worse than importing them and flagging it.',
+        },
+        {
+          question: 'Do we have to stop using what we have?',
+          answer:
+            'No. Auxilium reads the roster and ledger you already keep and exports back out, so ' +
+            'it can run alongside a CRM or an administration platform indefinitely. Plenty of ' +
+            'ministries should keep both — the relationships and the giving history stay where ' +
+            'they are, and the sharing workflow moves.',
+        },
+        {
+          question: 'Our guidelines are not written down that precisely.',
+          answer:
+            'Then that is the finding, and it is worth having on day one rather than in a ' +
+            'complaint. A ministry recording declines against no published guidelines is ' +
+            'generating findings against itself, so the setup checklist names it and says what ' +
+            'breaks while it is undone. Most of the work is transcription rather than decision.',
+        },
+        {
+          question: 'What happens to members while we switch?',
+          answer:
+            'Nothing they need to act on. Stored cards and verified bank mandates transfer ' +
+            'processor to processor with no member involvement, and billing dates are preserved ' +
+            'so nobody is charged twice or skipped. The churn ministries fear when switching is ' +
+            'almost entirely self-inflicted, and it comes from sending everybody an email asking ' +
+            'them to re-enter their payment details.',
+        },
+        {
+          question: 'Who can see a member\u2019s medical circumstances?',
+          answer:
+            'Staff at that ministry, and the member themselves. Member accounts live in a ' +
+            'different table behind a different cookie from staff accounts, so a member session ' +
+            'cannot satisfy a staff check — not because a query remembered to compare a role, ' +
+            'but because the lookup goes somewhere else entirely.',
+        },
+        {
+          question: 'How long before we know whether it is working?',
+          answer:
+            'One afternoon. The demo ministry is seeded with five families each carrying a ' +
+            'different kind of trouble and a full integrity report with real findings, so you ' +
+            'can judge the product before importing anything of your own.',
+        },
       ],
     },
+
+    {
+      type: 'prose',
+      heading: 'What it runs on',
+      paragraphs: [
+        'Cloudflare Workers, with D1 for records, R2 for documents and queues for background ' +
+        'work. Practically: it is fast from anywhere, there are no servers to maintain, and the ' +
+        'records live in one auditable place rather than across four spreadsheets and an inbox.',
+
+        'Every mutation writes an audit row, money is stored in integer cents so a share amount ' +
+        'cannot drift, and deletes are soft — so "why did this happen" is a question with an ' +
+        'answer months later.',
+      ],
+    },
+
+    {
+      type: 'callout',
+      tone: 'plain',
+      heading: 'Start with our data, not yours',
+      body:
+        'The demo ministry is the fastest way to judge this, and nothing about opening it ' +
+        'requires a card, a call, or a decision. When you do import your own roster, nothing is ' +
+        'written until you approve the preview.',
+    },
+
     {
       type: 'cta',
-      heading: 'Start with the demo',
+      heading: 'Open the demo and work the board',
+      body:
+        'Five families, a full ledger, and an integrity report with findings you can argue with.',
       cta: { label: 'Open the demo', href: '/app/login' },
-      secondaryCta: { label: 'See claims integrity', href: '/claims-integrity' },
+      secondaryCta: { label: 'See what it costs', href: '/pricing' },
     },
   ],
-  related: ['claims-integrity', 'guides/csv-import-that-survives-real-spreadsheets'],
+  related: [
+    'claims-integrity',
+    'narrative-relational-intelligence',
+    'pricing',
+    'guides/csv-import-that-survives-real-spreadsheets',
+  ],
 };
 
 export const CORE_PAGES: MarketingPage[] = [home, claimsIntegrity, nri, howItWorks];
