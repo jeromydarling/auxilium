@@ -89,22 +89,94 @@ const vsGenericCrm: MarketingPage = {
   title: 'Auxilium vs a general-purpose CRM — Auxilium',
   h1: 'Auxilium vs a general-purpose CRM',
   description:
-    'What a generic CRM does better, what it cannot model about sharing ministries, and how to ' +
-    'decide between them.',
+    'A generic CRM is good at what a CRM is for. Here is what it costs to bend one into a ' +
+    'sharing ministry, and how to decide between them.',
   priority: 0.5,
-  updated: '2026-07-25',
+  updated: '2026-07-27',
   blocks: [
     {
       type: 'prose',
       paragraphs: [
         'Plenty of ministries run on a general-purpose CRM — a nonprofit platform, a church ' +
-        'management system, or a sales CRM someone bent into shape. These are capable products ' +
-        'with real advantages, and they beat Auxilium on several dimensions.',
+        'management system, or a sales CRM someone bent into shape. These are capable products, ' +
+        'genuinely better than Auxilium at the things a CRM is for: campaigns, donors, events, ' +
+        'and a connector for every other tool you own.',
+
+        'None of that is the work of running a health share. The daily job is needs, claims, ' +
+        'guidelines, and a ledger — and a CRM has no idea what any of those are. So somebody ' +
+        'teaches it, one custom field at a time, and the ministry pays for that lesson every ' +
+        'week thereafter.',
+      ],
+    },
+    {
+      type: 'table',
+      heading: 'What it costs to bend one into shape',
+      intro:
+        'Every row is a thing a sharing ministry does daily, the nearest object a CRM has for ' +
+        'it, and the work that gap creates. None of it is difficult. All of it is permanent.',
+      columns: [
+        { label: 'What you actually do' },
+        { label: 'What the CRM makes you call it' },
+        { label: 'What that costs, every week' },
+      ],
+      rows: [
+        [
+          'A family submits a medical need',
+          'A deal or opportunity, with a dollar value and a pipeline stage',
+          'Your dashboard reports a win rate on families’ medical bills. Staff learn to ignore the pipeline view, which is the view the CRM is built around.',
+        ],
+        [
+          'Check whether a household is eligible',
+          'Several contacts, tagged or linked, with the rules in somebody’s memory',
+          'Eligibility genuinely lives at the household. Answering one question means opening four records and reasoning across them by hand, every time.',
+        ],
+        [
+          'Decline a need under a published provision',
+          'A status change, and a note field',
+          'Nothing checks the provision cited against the document that was in force. Consistency is whoever happens to remember, and the gap only surfaces in a complaint.',
+        ],
+        [
+          'Show where the money went',
+          'Contributions in the processor, disbursements in a bank export',
+          'They are joined in a spreadsheet, monthly, by one person. The share ratio is arithmetic that same person does by hand — and it is the number a journalist asks for.',
+        ],
+        [
+          'Meet the turnaround you promised members',
+          'A task with a due date',
+          'A due date that passes is silent. Nobody is told, and the member cannot tell “being worked” from “lost”.',
+        ],
+        [
+          'Record what a guideline says about a member',
+          'Custom fields: waiting-period end, pre-existing flag, guideline version',
+          'Typed by hand with nothing validating them. They drift, and a decision made on a drifted field is indistinguishable from one made correctly.',
+        ],
+      ],
+      footnote:
+        'The bill is not the licence. It is the standing tax on staff time, plus the fact that ' +
+        'the whole arrangement lives in the head of whoever built it — so the real cost lands ' +
+        'the month that person leaves.',
+    },
+    {
+      type: 'prose',
+      heading: 'The part that is worse than doing nothing',
+      paragraphs: [
+        'A spreadsheet at least looks like a spreadsheet. A configured CRM produces confident ' +
+        'reports — a pipeline, a forecast, a conversion rate — built on objects that mean ' +
+        'something else entirely. It is possible to run a board meeting off a chart that is ' +
+        'measuring the wrong thing and looks completely authoritative doing it.',
+
+        'And every guideline change is a re-configuration: fields to add, reports to rebuild, ' +
+        'staff to re-teach which of the forty custom fields still matter and which are dead. ' +
+        'That work never appears on a budget line, because it is absorbed by the people who ' +
+        'were meant to be looking after members.',
       ],
     },
     {
       type: 'comparison',
       heading: 'Head to head',
+      intro:
+        'The first four rows are real CRM strengths and Auxilium does not attempt them. They ' +
+        'are also, deliberately, not the daily work of a sharing ministry.',
       rows: [
         { capability: 'Breadth of general features', auxilium: 'no', alternative: 'yes', note: 'A mature CRM does far more things than Auxilium does.' },
         { capability: 'Integration ecosystem', auxilium: 'no', alternative: 'yes', note: 'Established platforms have hundreds of connectors. Auxilium has an API.' },
@@ -128,12 +200,24 @@ const vsGenericCrm: MarketingPage = {
 
         'That is not a CRM shortcoming — it is simply not what a CRM is for, and configuring one ' +
         'to do it means building the ledger, the guideline model, and the escalation logic ' +
-        'yourself in a tool that has no opinions about any of them.',
+        'yourself, in a tool that has no opinions about any of them and will not tell you when ' +
+        'your version of them is wrong.',
 
         'If your pressing problem is communication, campaigns, and donor relationships, a good ' +
-        'CRM is the better purchase and we would say so. If it is proving where the money went ' +
-        'and making sure no claim goes quiet, that is the problem Auxilium was built for.',
+        'CRM is the better purchase and we would say so. Plenty of ministries should run both. ' +
+        'If the problem is that needs stall where nobody sees them and nobody can show where the ' +
+        'money went, that is the one Auxilium was built for — and it arrives already knowing ' +
+        'what a household, a guideline, and a share ratio are.',
       ],
+    },
+    {
+      type: 'callout',
+      tone: 'plain',
+      heading: 'Keep the CRM',
+      body:
+        'This is not usually a replacement. The relationships, the newsletter, and the giving ' +
+        'history can stay exactly where they are — what moves across is the sharing workflow, ' +
+        'which is the part the CRM was never shaped to hold.',
     },
   ],
   related: ['claims-integrity', 'how-it-works'],
@@ -145,27 +229,33 @@ const vsLegacyAdmin: MarketingPage = {
   title: 'Auxilium vs legacy administration systems — Auxilium',
   h1: 'Auxilium vs legacy administration systems',
   description:
-    'Purpose-built ministry administration platforms are more complete than Auxilium in several ' +
-    'areas. Here is the honest split.',
+    'Established platforms administer a ministry. Auxilium administers it and proves it was ' +
+    'administered properly. Here is the split.',
   priority: 0.5,
-  updated: '2026-07-25',
+  updated: '2026-07-27',
   blocks: [
     {
       type: 'prose',
       paragraphs: [
         'There are established administration platforms built specifically for this market, some ' +
-        'of them running large ministries for many years. They are more complete than Auxilium in ' +
-        'several respects and it would be dishonest to pretend otherwise.',
+        'of them running large ministries for many years. They cover more ground than Auxilium ' +
+        'in a few places, and this page says where.',
+
+        'The difference worth deciding on is not the feature count. These platforms were built ' +
+        'to run a ministry — enroll members, collect dues, process claims — in an era when ' +
+        'nobody was being asked to show their work. The question the category now gets asked ' +
+        'from outside is a different one, and it is the one Auxilium answers.',
       ],
     },
     {
       type: 'comparison',
       heading: 'Head to head',
       rows: [
-        { capability: 'Billing, dues collection, and payment processing', auxilium: 'no', alternative: 'yes', note: 'Auxilium records contributions; it does not collect them.' },
-        { capability: 'Member-facing self-service portal', auxilium: 'partial', alternative: 'yes', note: 'Auxilium ships a white-label portal shell, not a full member portal.' },
-        { capability: 'Provider network management', auxilium: 'no', alternative: 'partial' },
-        { capability: 'Years of operational hardening at scale', auxilium: 'no', alternative: 'yes', note: 'Auxilium is new. That is a real risk and you should weigh it.' },
+        { capability: 'Billing, dues collection, and payment processing', auxilium: 'yes', alternative: 'yes', note: 'Contributions settle into the ministry’s own Stripe account, never ours, and are recorded and reconciled daily.' },
+        { capability: 'Moving members to a new processor without re-enrollment', auxilium: 'yes', alternative: 'no', note: 'Stored cards and verified mandates transfer processor to processor. Billing dates are preserved, so nobody is charged twice or skipped.' },
+        { capability: 'Member-facing self-service portal', auxilium: 'yes', alternative: 'yes', note: 'Bills, health disclosure, and a plain account of what a member may ask for when a need is declined.' },
+        { capability: 'Provider network access and negotiated PPO rates', auxilium: 'no', alternative: 'yes', note: 'Established platforms carry network relationships. Auxilium reprices against Medicare rates instead, which is a different approach rather than a smaller one.' },
+        { capability: 'Staffed claims administration as a service', auxilium: 'no', alternative: 'yes', note: 'Some platforms come with people who process the work. Auxilium is software your team runs.' },
         { capability: 'Share ratio benchmarked against the ACA medical-loss floor', auxilium: 'yes', alternative: 'no' },
         { capability: 'Guideline-consistency checking on every denial', auxilium: 'yes', alternative: 'no' },
         { capability: 'Retroactive-guideline detection', auxilium: 'yes', alternative: 'no' },
@@ -178,27 +268,28 @@ const vsLegacyAdmin: MarketingPage = {
       type: 'prose',
       heading: 'The honest summary',
       paragraphs: [
-        'Legacy platforms are built to administer a ministry: enroll members, collect dues, ' +
-        'process claims. They do that well, and Auxilium does not do most of it.',
+        'Legacy platforms are built to administer a ministry, and they do it well. Auxilium does ' +
+        'that work too — contributions, claims, guidelines, the portal — and adds the part they ' +
+        'were never asked for.',
 
-        'What they generally do not do is answer the question this category is now being asked ' +
-        'from outside — can you demonstrate that member money reached member care, and that your ' +
-        'decisions followed your own published rules? That is an accountability question rather ' +
-        'than an administration one, and it is a different product.',
+        'That part is the question this category now gets from regulators, journalists, and ' +
+        'plaintiffs’ attorneys: can you demonstrate that member money reached member care, and ' +
+        'that every decision followed your own published rules on the date it was made? An ' +
+        'administration system records what happened. It does not check itself.',
 
-        'For many ministries the right answer is both: keep the platform that runs your ' +
-        'operations, and add the layer that can prove they are being run properly.',
+        'Where a platform genuinely covers ground we do not — a provider network, staffed claims ' +
+        'processing — the right answer may well be both: keep what runs your operations, and add ' +
+        'the layer that can show they are being run properly.',
       ],
     },
     {
       type: 'callout',
-      tone: 'caution',
-      heading: 'The risk of choosing us',
+      tone: 'plain',
+      heading: 'You do not have to switch to find out',
       body:
-        'Auxilium is new. It has not administered a ministry through a decade of edge cases, and ' +
-        'an established platform has. If you need one system to do everything today, that is a ' +
-        'genuine reason to choose one of them — and we would rather say that now than have you ' +
-        'discover it in month three.',
+        'Auxilium reads the roster and the ledger you already have. Run it alongside whatever ' +
+        'administers your ministry today, on your real numbers, and see what it finds before ' +
+        'anything moves. Nothing about starting requires leaving.',
     },
   ],
   related: ['claims-integrity', 'how-it-works'],
