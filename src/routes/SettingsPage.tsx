@@ -8,10 +8,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader } from '@/app/AppShell';
+import { TeamSettings, AuditLog } from '@/features/admin/TeamAndAudit';
 import { api } from '@/lib/api';
-import { relativeDays } from '@/lib/utils';
 import { useAuth } from '@/app/AuthContext';
 import { CommitmentSettings } from '@/features/onboarding/CommitmentSettings';
 import { FormEditor } from '@/features/applications/FormEditor';
@@ -33,6 +32,7 @@ export function SettingsPage() {
             <TabsTrigger value="team">Team</TabsTrigger>
             <TabsTrigger value="application">Application</TabsTrigger>
             <TabsTrigger value="portal">Member portal</TabsTrigger>
+            <TabsTrigger value="audit">Audit log</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
           </TabsList>
 
@@ -43,7 +43,10 @@ export function SettingsPage() {
             <BrandStudio canEdit={canAdminister} />
           </TabsContent>
           <TabsContent value="team">
-            <TeamSettings />
+            <TeamSettings canAdminister={canAdminister} />
+          </TabsContent>
+          <TabsContent value="audit">
+            <AuditLog />
           </TabsContent>
           <TabsContent value="application">
             <FormEditor canEdit={canAdminister} />
@@ -132,38 +135,6 @@ function MinistrySettings({ canEdit }: { canEdit: boolean }) {
   );
 }
 
-function TeamSettings() {
-  const { data } = useQuery({ queryKey: ['admin', 'users'], queryFn: () => api.admin.users() });
-
-  return (
-    <div className="rounded-lg border bg-card">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Role</TableHead>
-            <TableHead>Last seen</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data?.items.map((member) => (
-            <TableRow key={member.id}>
-              <TableCell className="font-medium">{member.name}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">{member.email}</TableCell>
-              <TableCell>
-                <Badge variant="muted" className="capitalize">{member.role}</Badge>
-              </TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {relativeDays(member.last_seen_at)}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
 
 /**
  * The white-label CMS shell. V1 lists pages and their publish state; the block

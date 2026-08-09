@@ -182,6 +182,7 @@ export const api = {
     users: () => get<{ items: TeamMember[] }>('/admin/users'),
     createUser: (body: Record<string, unknown>) => post<{ id: string }>('/admin/users', body),
     removeUser: (id: string) => del<{ ok: true }>(`/admin/users/${id}`),
+    restoreUser: (id: string) => post<{ ok: true }>(`/admin/users/${id}/restore`, {}),
     org: () => get<{ org: OrgRecord }>('/admin/org'),
     updateOrg: (body: Record<string, unknown>) => patch<{ ok: true }>('/admin/org', body),
     audit: (params: { subject_id?: string; action?: string } = {}) =>
@@ -289,6 +290,29 @@ export const api = {
     unhelpful: (question: string, slug?: string) =>
       post<{ recorded: true }>('/knowledge/unhelpful', { question, slug }),
     gaps: () => get<{ items: KnowledgeGap[] }>('/knowledge/gaps'),
+  },
+
+  /**
+   * Moving off another payment processor.
+   *
+   * The manifest goes up as raw CSV text rather than JSON: it is a spreadsheet
+   * export, and re-encoding it client-side would mean parsing it twice with two
+   * different parsers, which is how the two disagree.
+   */
+  migration: {
+    processors: () => get<{ processors: ProcessorProfileRef[] }>('/migration/processors'),
+    list: () => get<{ items: MigrationListItem[] }>('/migration'),
+    start: (body: { processor: string; merchant_id?: string }) =>
+      post<MigrationSummary>('/migration', body),
+    manifest: (id: string, csv: string) =>
+      request<{ report: ManifestReport }>(`/migration/${id}/manifest`, {
+        method: 'POST',
+        body: csv,
+        headers: { 'Content-Type': 'text/csv' },
+      }),
+    status: (id: string) => get<MigrationStatus>(`/migration/${id}/status`),
+    schedule: (id: string) => get<{ items: unknown[] }>(`/migration/${id}/schedule`),
+    reconcile: (id: string, body: unknown) => post<unknown>(`/migration/${id}/reconcile`, body),
   },
 
   feedback: {
@@ -670,6 +694,56 @@ export interface MinistryAlert {
   last_seen_at: string;
   seen_count: number;
   acked_at: string | null;
+}
+
+export interface ProcessorProfileRef {
+  key: string;
+  label: string;
+  supports: Record<string, boolean>;
+}
+
+export interface MigrationListItem {
+  id: string;
+  source_processor: string;
+  source_merchant_id: string | null;
+  processor_label: string;
+  status: string;
+  total_rows: number;
+  created_at: string;
+}
+
+export interface MigrationSummary {
+  id: string;
+  processor: string;
+  estimatedDays?: { low: number; high: number };
+  warnings: string[];
+  request_letter: string;
+}
+
+export interface ManifestIssue {
+  level: 'blocking' | 'warning' | 'info';
+  code: string;
+  message: string;
+}
+
+export interface ManifestReport {
+  total: number;
+  ready: number;
+  flagged: number;
+  manual: number;
+  issues: ManifestIssue[];
+}
+
+export interface MigrationStatus {
+  id: string;
+  processor: string;
+  status: string;
+  total: number;
+  safely_across: number;
+  still_to_resolve: number;
+  wallets: { apple_pay: number; google_pay: number };
+  needs_attention: { legacy_customer_id: string; email: string | null; status: string }[];
+  guidance: string;
 }
 
 export interface FeedbackItem {

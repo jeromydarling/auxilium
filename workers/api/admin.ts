@@ -92,6 +92,39 @@ admin.delete('/users/:id', requireAdmin, async (c) => {
 });
 
 /**
+ * Put a removed colleague back.
+ *
+ * The reverse half of the undo bar. Removing somebody is a soft delete that
+ * also drops their live sessions, which makes it *feel* irreversible even
+ * though the row is still there — and removing the wrong name from a list is an
+ * ordinary mis-click. Only un-sets `deleted_at`; it cannot conjure a user, and
+ * the org predicate means it cannot reach into another ministry.
+ */
+admin.post('/users/:id/restore', requireAdmin, async (c) => {
+  const user = (await currentUser(c))!;
+  const id = param(c, 'id');
+  const now = nowIso();
+
+  const result = await run(
+    c.env.DB,
+    'UPDATE users SET deleted_at = NULL, updated_at = ? WHERE id = ? AND org_id = ? AND deleted_at IS NOT NULL',
+    now, id, user.org_id,
+  );
+
+  // Reports rather than pretends, the same rule the page restore follows: an
+  // Undo that returns ok having restored nobody is worse than one that fails.
+  if (result.meta.changes === 0) {
+    return c.json({ error: 'That person could not be put back. They may already have been restored.' }, 404);
+  }
+
+  await audit(c.env.DB, {
+    orgId: user.org_id, actorId: user.id, actorKind: 'user', action: 'user.restored',
+    subjectType: 'user', subjectId: id,
+  });
+  return c.json({ ok: true });
+});
+
+/**
  * Live alerts for this ministry.
  *
  * `ministryAlerts` never returns operator-audience rows, so a ledger discrepancy

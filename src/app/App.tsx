@@ -72,6 +72,7 @@ const ApplicationsPage = lazyPage(() => import('@/routes/ApplicationsPage'), 'Ap
 const ApplicationDetailPage = lazyPage(() => import('@/routes/ApplicationDetailPage'), 'ApplicationDetailPage');
 const SettingsPage = lazyPage(() => import('@/routes/SettingsPage'), 'SettingsPage');
 const SiteBuilder = lazyPage(() => import('@/features/cms/SiteBuilder'), 'SiteBuilder');
+const MigrationPage = lazyPage(() => import('@/routes/MigrationPage'), 'MigrationPage');
 const RulesPage = lazyPage(() => import('@/routes/RulesPage'), 'RulesPage');
 
 /**
@@ -235,6 +236,7 @@ function AppRoutes() {
             rest of the path rather than a single segment. */}
         <Route path="/knowledge/*" element={<KnowledgeArticlePage />} />
         <Route path="/site" element={<SiteBuilder />} />
+        <Route path="/migration" element={<MigrationPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/settings/rules" element={<RulesPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

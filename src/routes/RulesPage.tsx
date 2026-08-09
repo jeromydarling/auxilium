@@ -18,6 +18,17 @@ export function RulesPage() {
     queryFn: () => api.nri.rules(),
   });
 
+  // The integrity rules were published by the API and rendered nowhere, so
+  // "every rule carries its provenance" was true of the endpoint and of no
+  // screen. The provenance is the part worth showing: when a ministry disputes
+  // a finding, the answer should be a specific thing that happened to a real
+  // community rather than an abstraction.
+  const { data: integrity } = useQuery({
+    queryKey: ['integrity', 'rules'],
+    staleTime: Infinity,
+    queryFn: () => api.integrity.rules(),
+  });
+
   return (
     <>
       <PageHeader
@@ -93,6 +104,31 @@ export function RulesPage() {
             );
           })
         )}
+      </div>
+
+      <div className="space-y-4 px-6 pb-6">
+        <section className="rounded-lg border bg-card p-5">
+          <h2 className="font-semibold">How claims integrity scores are calculated</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            The same arithmetic, for the financial half: a score is the sum of the weights of every
+            rule that matched. Each one records the documented failure it exists to catch, so a
+            disputed finding can be answered with a specific case rather than an assertion.
+          </p>
+
+          <ul className="mt-4 space-y-3">
+            {(integrity?.rules ?? []).map((rule) => (
+              <li key={rule.code} className="rounded-md border p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-medium">{rule.label}</span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {rule.code} · weight {rule.weight}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-sm text-muted-foreground">{rule.provenance}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
       </div>
     </>
   );

@@ -656,17 +656,17 @@ export const FEATURES: FeatureEntry[] = [
   {
     title: 'A visual block editor',
     body:
-      'Pages, blocks, draft and publish, and the public read endpoint all exist. The builder for ' +
-      'arranging them does not yet.',
+      'Add, reorder and remove blocks, with a live preview rendered by the same code that serves ' +
+      'the public page — so what you see is the page, not an approximation of it.',
     category: 'Platform',
     tags: ['cms', 'roadmap'],
-    status: 'planned',
+    status: 'shipped',
   },
   {
     title: 'Tokened team invites',
     body:
-      'Administrators create users with a password today. An invitation where the invitee sets ' +
-      'their own is the right pattern and is not built yet.',
+      'Administrators add a colleague with a temporary password today, and pass it on themselves. ' +
+      'An invitation where the invitee sets their own is the right pattern and is not built yet.',
     category: 'Platform',
     tags: ['admin', 'security', 'roadmap'],
     status: 'planned',

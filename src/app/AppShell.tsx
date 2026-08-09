@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Home, Upload, HeartHandshake, HandHeart,
-  Compass, Settings, LogOut, ShieldCheck, Scale, Siren, BookOpen, Inbox, Globe,
+  Compass, Settings, LogOut, ShieldCheck, Scale, Siren, BookOpen, Inbox, Globe, ArrowRightLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,7 @@ const NAV_GROUPS: { label: string; items: { to: string; label: string; icon: typ
       { to: '/members', label: 'Members', icon: Users },
       { to: '/households', label: 'Households', icon: Home },
       { to: '/imports', label: 'Imports', icon: Upload },
+      { to: '/migration', label: 'Move processor', icon: ArrowRightLeft },
     ],
   },
   {

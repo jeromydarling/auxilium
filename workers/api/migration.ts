@@ -51,6 +51,35 @@ migration.get('/processors', (c) =>
 );
 
 /** Start a migration, and hand back the letter to send. */
+/**
+ * The migrations this ministry has started.
+ *
+ * Added when the screen was built, because without it a migration was
+ * effectively write-only: the id came back from the create call and nothing
+ * could ask for it again, so reloading the page lost a multi-week piece of work
+ * with no way to find it. A wizard whose state lives only in the tab that
+ * started it is not a wizard anybody should run a payment migration through.
+ */
+migration.get('/', requireLeadership, async (c) => {
+  const user = (await currentUser(c))!;
+  const rows = await all<{
+    id: string; source_processor: string; source_merchant_id: string | null;
+    status: string; total_rows: number; created_at: string;
+  }>(
+    c.env.DB,
+    `SELECT id, source_processor, source_merchant_id, status, total_rows, created_at
+       FROM processor_migrations WHERE org_id = ? ORDER BY created_at DESC`,
+    user.org_id,
+  );
+
+  return c.json({
+    items: rows.map((r) => ({
+      ...r,
+      processor_label: processorByKey(r.source_processor)?.label ?? r.source_processor,
+    })),
+  });
+});
+
 migration.post('/', requireLeadership, async (c) => {
   const user = (await currentUser(c))!;
   const body = await c.req.json<{ processor: string; merchant_id?: string }>();
