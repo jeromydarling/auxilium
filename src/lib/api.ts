@@ -195,6 +195,17 @@ export const api = {
     rules: () => get<{ version: string; rules: IntegrityRuleRef[] }>('/integrity/rules'),
     recompute: () => post<{ report: IntegrityReport }>('/integrity/recompute'),
     guidelines: () => get<{ items: GuidelineVersion[] }>('/integrity/guidelines'),
+    publishGuideline: (body: Record<string, unknown>) =>
+      post<{ id: string }>('/integrity/guidelines', body),
+    /** A correction: the record never matched the published document. */
+    correctGuideline: (id: string, body: Record<string, unknown>) =>
+      patch<{ ok: true; rescored: boolean }>(`/integrity/guidelines/${id}`, body),
+    /** Withdrawal. Refused the moment anything cites the version. */
+    withdrawGuideline: (id: string) => del<{ ok: true }>(`/integrity/guidelines/${id}`),
+    guidelineRevisions: (id: string) =>
+      get<{ items: { id: string; reason: string; archived_at: string }[] }>(
+        `/integrity/guidelines/${id}/revisions`,
+      ),
     recordContribution: (body: Record<string, unknown>) => post<{ id: string }>('/integrity/contributions', body),
     recordDisbursement: (body: Record<string, unknown>) => post<{ id: string }>('/integrity/disbursements', body),
   },
@@ -770,6 +781,9 @@ export interface DenialFinding {
 }
 
 export interface GuidelineVersion {
+  /** Present from the API; absent on the pure scoring shape. */
+  id?: string;
+  published_url?: string | null;
   version: string;
   effective_from: string;
   effective_to: string | null;
@@ -826,7 +840,7 @@ export interface TrackerStep {
 export interface TrackerResponse {
   claim: {
     id: string; status: string; title: string; amount_requested_cents: number;
-    denial_reason_code: string | null; denial_note: string | null;
+    denial_reason_code: string | null; denial_guideline_ref: string | null; denial_note: string | null;
   };
   sla: SlaState;
   steps: TrackerStep[];

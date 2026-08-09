@@ -193,11 +193,16 @@ claims.get('/:id/tracker', async (c) => {
     id: string; status: string; title: string; submitted_at: string | null; created_at: string;
     sla_due_at: string | null; first_response_at: string | null;
     last_status_change_at: string | null; amount_requested_cents: number;
-    denial_reason_code: string | null; denial_note: string | null;
+    denial_reason_code: string | null; denial_guideline_ref: string | null; denial_note: string | null;
   }>(
     c.env.DB,
     `SELECT id, status, title, submitted_at, created_at, sla_due_at, first_response_at,
-            last_status_change_at, amount_requested_cents, denial_reason_code, denial_note
+            last_status_change_at, amount_requested_cents, denial_reason_code,
+            -- Selected so staff can see whether a provision was cited *and*
+            -- when one was not. The member portal already showed this; leaving
+            -- it out here meant the member could see a gap in the record that
+            -- the people responsible for fixing it could not.
+            denial_guideline_ref, denial_note
        FROM needs WHERE id = ? AND org_id = ? AND deleted_at IS NULL`,
     id, user.org_id,
   );

@@ -67,6 +67,7 @@ const PrayerBoardPage = lazyPage(() => import('@/routes/PrayerBoardPage'), 'Pray
 const CommandCenterPage = lazyPage(() => import('@/routes/CommandCenterPage'), 'CommandCenterPage');
 const IntegrityPage = lazyPage(() => import('@/routes/IntegrityPage'), 'IntegrityPage');
 const EscalationsPage = lazyPage(() => import('@/routes/EscalationsPage'), 'EscalationsPage');
+const ClaimDetailPage = lazyPage(() => import('@/routes/ClaimDetailPage'), 'ClaimDetailPage');
 const ApplicationsPage = lazyPage(() => import('@/routes/ApplicationsPage'), 'ApplicationsPage');
 const ApplicationDetailPage = lazyPage(() => import('@/routes/ApplicationDetailPage'), 'ApplicationDetailPage');
 const SettingsPage = lazyPage(() => import('@/routes/SettingsPage'), 'SettingsPage');
@@ -226,6 +227,7 @@ function AppRoutes() {
         <Route path="/nri" element={<CommandCenterPage />} />
         <Route path="/integrity" element={<IntegrityPage />} />
         <Route path="/escalations" element={<EscalationsPage />} />
+        <Route path="/claims/:id" element={<ClaimDetailPage />} />
         <Route path="/applications" element={<ApplicationsPage />} />
         <Route path="/applications/:id" element={<ApplicationDetailPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />

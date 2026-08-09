@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/app/AppShell';
+import { LedgerEntry } from '@/features/integrity/LedgerEntry';
+import { Guidelines } from '@/features/integrity/Guidelines';
 import { api, type IntegrityBand, type PeriodLedger } from '@/lib/api';
 import { formatCents, formatCentsCompact } from '@/lib/money';
 import { cn } from '@/lib/utils';
@@ -174,6 +176,7 @@ export function IntegrityPage() {
           <TabsList>
             <TabsTrigger value="findings">Findings ({report.reason_codes.length})</TabsTrigger>
             <TabsTrigger value="ledger">Ledger</TabsTrigger>
+            <TabsTrigger value="guidelines">Guidelines</TabsTrigger>
             <TabsTrigger value="denials">Denials to re-open ({denials?.findings.length ?? 0})</TabsTrigger>
           </TabsList>
 
@@ -210,8 +213,16 @@ export function IntegrityPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="ledger">
+          <TabsContent value="ledger" className="space-y-4">
+            {/* Entry above the table, not below it. The table is what a
+                ministry with data reads; the form is what a ministry without
+                any needs to find, and it is the second group that is stuck. */}
+            <LedgerEntry />
             <LedgerTable ledger={ledger} />
+          </TabsContent>
+
+          <TabsContent value="guidelines">
+            <Guidelines />
           </TabsContent>
 
           <TabsContent value="denials">

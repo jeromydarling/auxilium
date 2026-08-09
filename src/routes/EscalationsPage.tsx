@@ -137,7 +137,12 @@ function EscalationRow({
               </Badge>
             )}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">{claim.title}</p>
+          {/* The way in to actually deciding it. Before this the board could
+              tell you a claim was late and let you say you were on it, and
+              there was nowhere to go next. */}
+          <Link to={`/claims/${claim.id}`} className="mt-1 block text-sm text-muted-foreground hover:text-foreground hover:underline">
+            {claim.title}
+          </Link>
           <p className={cn('mt-1.5 text-sm', severe ? 'text-destructive' : 'text-onus')}>
             {sla.days_over > 0 ? (
               <>
@@ -164,6 +169,9 @@ function EscalationRow({
               I&rsquo;m on it
             </Button>
           )}
+          <Button variant="ghost" size="sm" className="mt-1 w-full" asChild>
+            <Link to={`/claims/${claim.id}`}>Work it</Link>
+          </Button>
         </div>
       </div>
 

@@ -5,7 +5,7 @@ import { all, first, run, json } from '../lib/db';
 import { param } from '../lib/http';
 import { audit } from '../lib/audit';
 import {
-  gatherIntegrityFacts, computeAndStoreIntegrity, auditOrgDenials, loadGuidelines,
+  gatherIntegrityFacts, computeAndStoreIntegrity, auditOrgDenials,
 } from '../lib/integrity-service';
 import { computeIntegrity } from '../../src/lib/integrity/engine';
 import { INTEGRITY_RULES, INTEGRITY_RULES_VERSION } from '../../src/lib/integrity/rules';
@@ -265,7 +265,32 @@ integrity.post('/disbursements', requireLeadership, async (c) => {
 
 integrity.get('/guidelines', async (c) => {
   const user = (await currentUser(c))!;
-  return c.json({ items: await loadGuidelines(c.env, user.org_id) });
+
+  // Its own query rather than `loadGuidelines`, because the editor needs the
+  // row id and the scoring engine does not. Without it the correction and
+  // withdrawal endpoints — both keyed by id — were unreachable from any client
+  // that had only ever listed the versions, which is every client.
+  const rows = await all<{
+    id: string; version: string; effective_from: string; effective_to: string | null;
+    published_url: string | null; provisions: string;
+  }>(
+    c.env.DB,
+    `SELECT id, version, effective_from, effective_to, published_url, provisions
+       FROM sharing_guidelines WHERE org_id = ? AND deleted_at IS NULL
+      ORDER BY effective_from DESC`,
+    user.org_id,
+  );
+
+  return c.json({
+    items: rows.map((r) => ({
+      id: r.id,
+      version: r.version,
+      effective_from: r.effective_from,
+      effective_to: r.effective_to,
+      published_url: r.published_url,
+      provisions: json<unknown[]>(r.provisions, []),
+    })),
+  });
 });
 
 integrity.post('/guidelines', requireLeadership, async (c) => {
