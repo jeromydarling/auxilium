@@ -172,6 +172,41 @@ const vsGenericCrm: MarketingPage = {
       ],
     },
     {
+      type: 'prose',
+      heading: 'The quiet part: what you call it is what it becomes',
+      paragraphs: [
+        'This is not only a software problem, and the clearest description of it comes from ' +
+        'clinical medicine rather than from administration. Dr. Kristin Collier of the ' +
+        'University of Michigan Medical School has noted how the language changes as a doctor ' +
+        'becomes more senior — an intern cares for people with diabetes, and an attending ' +
+        'manages diabetes.',
+      ],
+    },
+    {
+      type: 'quote',
+      body:
+        'A justification of a retreat from the patient as person, every step of the way.',
+      attribution: 'Dr. Kristin Collier, University of Michigan Medical School',
+      source: {
+        label: 'Bishop Conley on Catholic healthcare and the AI revolution, National Catholic Register',
+        url: 'https://www.ncregister.com/commentaries/bishop-conley-on-catholic-healthcare-and-the-ai-revolution',
+      },
+    },
+    {
+      type: 'prose',
+      paragraphs: [
+        'The same retreat happens in a ministry office, and a generic CRM is what accelerates ' +
+        'it. A family in difficulty becomes a record in a stage. The question stops being ' +
+        '"how is the Okonkwo household" and becomes "where is that one in the pipeline" — ' +
+        'which is a question about the software rather than about anybody. Nobody decides to ' +
+        'make that trade. It arrives through the object you were given to put a need in.',
+
+        'Which is the argument for a tool shaped like the work. Not because a purpose-built ' +
+        'system is automatically better, but because the nouns it hands you are the ones you ' +
+        'will end up thinking in.',
+      ],
+    },
+    {
       type: 'comparison',
       heading: 'Head to head',
       intro:

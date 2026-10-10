@@ -657,8 +657,168 @@ const movingProcessors: MarketingPage = {
   related: ['features', 'pricing', 'how-it-works'],
 };
 
+/**
+ * The "is this just more metrics?" objection, answered.
+ *
+ * It is the most common serious reaction to a ministry dashboard, and it is
+ * not a misunderstanding to be corrected — it is right about a real failure
+ * mode. So this guide concedes it first and then says what a number has to do
+ * to be worth putting in front of somebody doing pastoral work. The four tests
+ * are transferable: a ministry can apply them to a spreadsheet it already has
+ * and never buy anything.
+ */
+const measuringWithoutManaging: MarketingPage = {
+  slug: 'guides/measuring-a-ministry-without-managing-people',
+  kind: 'guide',
+  category: 'Governance',
+  title: 'Measuring a ministry without managing people — Auxilium',
+  h1: 'Measuring a ministry without managing people',
+  description:
+    'Dashboards have a way of turning families into records and attention into activity. Four ' +
+    'tests a ministry number has to pass before it belongs in front of someone doing pastoral ' +
+    'work — and what should deliberately not be counted.',
+  priority: 0.55,
+  updated: '2026-10-10',
+  blocks: [
+    {
+      type: 'prose',
+      paragraphs: [
+        'The first reaction a lot of ministry directors have to a dashboard is suspicion, and it ' +
+        'is the correct reaction. Put a number in front of people and the number becomes the ' +
+        'work. Count calls and you will get calls. Count closed cases and cases will close. ' +
+        'Neither of those is the same thing as a family being looked after, and the gap between ' +
+        'them is invisible precisely because the chart looks better than it did last quarter.',
+
+        'The worry underneath it is sharper than Goodhart\'s law, though. It is that measurement ' +
+        'changes the thing you are looking at. A household in difficulty becomes a record in a ' +
+        'status. The question stops being how that household is and becomes where it has got to. ' +
+        'Nobody decides to make that trade — it arrives through the object they were handed to ' +
+        'put a need in.',
+
+        'So this is not a guide arguing that more measurement is better. It is four tests a ' +
+        'number has to pass before it has any business being on the screen of somebody who is ' +
+        'about to phone a family, and a short list of things that should not be counted at all. ' +
+        'They apply to a spreadsheet as much as to software.',
+      ],
+    },
+    {
+      type: 'prose',
+      heading: 'One: it has to name somebody, not a rate',
+      paragraphs: [
+        '"Nine per cent of claims breached our turnaround commitment last month" is a report. It ' +
+        'is useful to a board once a quarter and useless on a Tuesday morning, because there is ' +
+        'nothing in it to do. Worse, a rate invites the response that improves the rate: the ' +
+        'nine per cent gets reclassified, or the commitment gets loosened, and the families in it ' +
+        'are exactly as stranded as they were.',
+
+        '"This claim is on day thirty-one, nobody has opened it, and here is the member\'s phone ' +
+        'number" is work. A ministry number earns its place by ending in a person and an action. ' +
+        'If the only available response to a figure is to feel better or worse about it, it is ' +
+        'a board slide, and it should live on a board slide.',
+      ],
+    },
+    {
+      type: 'prose',
+      heading: 'Two: it has to be arguable',
+      paragraphs: [
+        'Somebody who knows a family well has to be able to look at a score about them, ' +
+        'disagree, and point at the specific reason they disagree with — not simply override it ' +
+        'or learn to ignore it. That means the reasons and their weights are shown beside the ' +
+        'number, and the whole rule set is readable, including the rules that did not fire.',
+
+        'A number that cannot be contested does not get trusted with pastoral care. It gets ' +
+        'worked around, which is the same outcome as being wrong but harder to notice.',
+      ],
+    },
+    {
+      type: 'prose',
+      heading: 'Three: a person has to be able to say "I have handled this"',
+      paragraphs: [
+        'Attention is finite and a list that only grows stops being read. So someone has to be ' +
+        'able to clear an item — and what that must mean is "I have seen this and dealt with it", ' +
+        'not "never show me this household again".',
+
+        'The distinction is load-bearing, and it is where most alerting gets it wrong in one ' +
+        'direction or the other. An item that cannot be dismissed trains people to skim. An item ' +
+        'dismissed permanently means somebody who has already decided a quiet member is fine ' +
+        'will never be told that the same member is now quiet and in hospital. The resolution is ' +
+        'that a dismissal lapses when the facts get materially worse, and nothing else brings ' +
+        'it back.',
+      ],
+    },
+    {
+      type: 'prose',
+      heading: 'Four: ties have to break toward the person, not the money',
+      paragraphs: [
+        'Any ranked list produces ties, and more of them than people expect — a bad week will put ' +
+        'five households at the top with nothing to separate them. What happens next is a moral ' +
+        'choice that usually gets made by accident, by whatever order the database returned.',
+
+        'Make it on purpose. In Auxilium, when two readings are equal, the one about someone ' +
+        'hurting outranks the one about an expensive case. That is a line of code, and it is the ' +
+        'kind of line worth knowing is there, because the default — process the biggest number ' +
+        'first — is both defensible-sounding and exactly backwards for a ministry.',
+
+        'The same applies below the tie. If a board ranks by band but not within it, it is ' +
+        'telling staff that five households are interchangeable, and they will work the top row. ' +
+        'Whatever breaks that tie should be stated on the row itself, so the ranking can be ' +
+        'disagreed with rather than merely obeyed.',
+      ],
+    },
+    {
+      type: 'prose',
+      heading: 'What should deliberately not be counted',
+      paragraphs: [
+        'The tests above are about numbers worth having. This list is shorter and matters more.',
+
+        'No staff leaderboard. The moment contact volume is attributed and ranked, the cheapest ' +
+        'contacts win and the long difficult conversation becomes a bad use of an afternoon. ' +
+        'Follow-ups need an owner so that nothing is nobody\'s — an owner is not a score.',
+
+        'No close rate, and no target for one. A case closes when it is finished, and a number ' +
+        'that rewards closing is a number that rewards closing early.',
+
+        'Nothing that scores a member on worthiness. Auxilium scores how well a household is ' +
+        'being served and how defensibly a ministry is operating. There is no path anywhere in ' +
+        'it from a score to a decline, and there should not be — a family refused by something ' +
+        'that cannot be argued with has been refused twice.',
+
+        'And no fee per claim processed. That one is ours rather than yours, but it is the same ' +
+        'principle: a vendor paid by the claim has a quiet interest in fewer of them, which would ' +
+        'contradict everything else on this page.',
+      ],
+    },
+    {
+      type: 'callout',
+      tone: 'plain',
+      heading: 'The honest limit',
+      body:
+        'All of this gets you to the point where the right household is at the top of a list with ' +
+        'the reason attached. It does not make the call, and it has no opinion about how that ' +
+        'conversation should go. The measurement is worth having because attention is scarce and ' +
+        'the quiet cases are the ones that get missed — not because it is the part that helps ' +
+        'anybody.',
+    },
+    {
+      type: 'cta',
+      heading: 'See what the board actually shows',
+      body:
+        'The demo ministry has the ties, the stated reasons, and the awkward cases left in. Every ' +
+        'rule and weight is published to administrators.',
+      cta: { label: 'Open the demo', href: '/app/login' },
+      secondaryCta: { label: 'Why scoring is not a model', href: '/guides/explainable-scoring' },
+    },
+  ],
+  related: [
+    'narrative-relational-intelligence',
+    'guides/explainable-scoring',
+    'compare/generic-crm',
+  ],
+};
+
 export const GUIDES: MarketingPage[] = [
   movingProcessors,
+  measuringWithoutManaging,
   shareRatioExplained,
   howIntegrityScoringWorks,
   explainableScoring,

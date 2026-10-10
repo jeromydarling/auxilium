@@ -568,13 +568,34 @@ const nri: MarketingPage = {
       ],
     },
     {
+      type: 'prose',
+      heading: 'What it is for, stated carefully',
+      paragraphs: [
+        'NRI does not make anybody more efficient and is not meant to. The pastoral hour it ' +
+        'points at costs exactly what it always cost. What it changes is which hour gets spent ' +
+        'on whom — the attention that currently goes to whoever happened to ring up, or to the ' +
+        'largest number on the list, goes instead to the household the ministry can least afford ' +
+        'to miss.',
+
+        'That is also why ties break toward the hurting person rather than the expensive case, ' +
+        'and why nothing in the scoring touches whether a need gets shared. A ranking is a claim ' +
+        'about where to look first. It is not a judgement about anybody, and the moment it ' +
+        'starts deciding outcomes it has stopped being arguable — which was the only thing that ' +
+        'made it safe to put in front of somebody doing this work.',
+      ],
+    },
+    {
       type: 'cta',
       heading: 'See it against realistic data',
       body: 'Five seeded members, one for each thing NRI is meant to catch, plus one who is perfectly fine.',
       cta: { label: 'Open the demo', href: '/app/login' },
     },
   ],
-  related: ['claims-integrity', 'guides/explainable-scoring'],
+  related: [
+    'claims-integrity',
+    'guides/explainable-scoring',
+    'guides/measuring-a-ministry-without-managing-people',
+  ],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -780,6 +801,30 @@ const howItWorks: MarketingPage = {
         'Four readings, each with the rules that produced it and the weight each rule carried. ' +
         'A member can carry several at once, and that is the point: high case weight with low ' +
         'care is a billing problem, and high on both is a family in crisis.',
+    },
+
+    {
+      type: 'prose',
+      heading: 'This does not save you time, and that is not the claim',
+      paragraphs: [
+        'A great deal of software in this category is sold on hours recovered, and we are not ' +
+        'going to pretend to know how many you would get back. A ministry does not have a ' +
+        'staffing problem that a dashboard solves. What it has is an attention problem: the ' +
+        'hours exist, and too many of them go on reconstructing where things stand — which claim ' +
+        'is late, who was promised a call, what the ratio is this quarter, which guideline was in ' +
+        'force in March.',
+
+        'That reconstruction is the part that is being removed. The hour does not disappear; it ' +
+        'moves from assembling the picture to acting on it. The honest version of the benefit is ' +
+        'a redirection, not a saving, and it is worth saying plainly because the two measure ' +
+        'completely different things. A ministry that got two hours back has not necessarily ' +
+        'phoned anybody.',
+
+        'So the outcome to hold us to is not a smaller admin load. It is that fewer households ' +
+        'go a month without being contacted, and fewer claims sit unopened past the commitment ' +
+        'the ministry made. Both of those are countable from your own records, and both are on ' +
+        'the board rather than in a report we write about ourselves.',
+      ],
     },
 
     {

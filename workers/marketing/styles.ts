@@ -198,6 +198,12 @@ details p{margin:13px 0 0;color:var(--muted)}
   border-radius:var(--r-lg)}
 .quote blockquote{margin:0;font-size:19px;line-height:1.55;letter-spacing:-.01em}
 .quote figcaption{color:var(--muted);font-size:14px;margin-top:14px}
+/* The citation gets its own line. The source link is inline-block with a top
+   margin for the stat blocks it was written for, so inside a figcaption it
+   drops below the attribution anyway — leaving any separator stranded at the
+   end of the line above. Stating the line break here is what lets the renderer
+   omit the separator rather than print a dangling dash. */
+.quote figcaption .source{display:block;margin-top:8px}
 
 /* ── CTA ────────────────────────────────────────────────────────────────── */
 .cta-block{position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);

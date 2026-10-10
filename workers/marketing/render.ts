@@ -270,7 +270,7 @@ function renderBlock(block: Block, page: MarketingPage): string {
       return `<section class="band"><div class="wrap narrow">
         <figure class="quote reveal">
           <blockquote>${esc(block.body)}</blockquote>
-          <figcaption>${esc(block.attribution)}${block.source ? ` — ${renderSource(block.source)}` : ''}</figcaption>
+          <figcaption>${esc(block.attribution)}${block.source ? renderSource(block.source) : ''}</figcaption>
         </figure>
       </div></section>`;
 
